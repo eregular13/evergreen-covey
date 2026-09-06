@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evergreen-covey"
+version = "0.1.0"
+description = "SCOPE-gated Lego for sharded BYO scanner workers. First adapter: Nmap (operator-provided)."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Evergreen Covey" }]
+keywords = ["evergreen", "covey", "scope", "nmap", "orchestration", "byo"]
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+covey = "covey.cli:main"
+
+[project.urls]
+License-Lock = "LICENSE-LOCK.md"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "integration: end-to-end prove that invokes BYO nmap through the Covey runner",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning",
+]

@@ -1,0 +1,24 @@
+# Evergreen Covey — signed demo SCOPE for the local prove path.
+# Tiles loopback 127.0.0.0/28 into /30s (4 shards). Not a real /8.
+# Signature is HMAC-SHA256 over the document using the demo key
+# (demo: true). Operators replace this with their own RFC1918 lab
+# and sign with COVEY_SCOPE_HMAC_KEY.
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey loopback prove
+window:
+  start: "2026-01-01T00:00:00Z"
+  end: "2029-12-31T23:59:59Z"
+adapter: nmap
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+targets:
+- cidr: 127.0.0.0/28
+signature: 3c74bf7eb2037994869d503d6bf2dec61db50f5003938601cc0678b1ab645da9

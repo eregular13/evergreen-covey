@@ -1,0 +1,401 @@
+"""Execute plan workers via local subprocess or docker run."""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any
+
+from covey.adapters.base import Adapter, materialize_template
+from covey.adapters.nmap import NmapAdapter
+from covey.errors import RunnerError
+from covey.plan import Plan, Worker
+
+NMAP_ENV = "COVEY_NMAP"
+NMAP_IMAGE_ENV = "COVEY_NMAP_IMAGE"
+DEFAULT_DOCKER_IMAGE = "instrumentisto/nmap"
+DEFAULT_TIMEOUT_SEC = 120
+
+
+@dataclass
+class ExecSpec:
+    kind: str  # "local" | "docker"
+    nmap: str  # binary path/name or image
+    display: str
+
+    def wrap(self, argv: list[str], *, cwd: Path) -> list[str]:
+        if not argv:
+            raise RunnerError("empty argv")
+        if self.kind == "local":
+            wrapped = list(argv)
+            wrapped[0] = self.nmap
+            return wrapped
+        if self.kind == "docker":
+            # Force entrypoint so images that already wrap nmap stay predictable.
+            rest = argv[1:] if argv[0] == "nmap" else argv
+            return [
+                "docker",
+                "run",
+                "--rm",
+                "--network",
+                "host",
+                "-v",
+                f"{cwd.resolve()}:/work",
+                "-w",
+                "/work",
+                "--entrypoint",
+                "nmap",
+                self.nmap,
+                *rest,
+            ]
+        raise RunnerError(f"unknown exec kind {self.kind}")
+
+
+@dataclass
+class WorkerResult:
+    id: str
+    shard_id: str
+    stage: str
+    target: str
+    argv: list[str]
+    exit_code: int
+    artifact_dir: str
+    live_hosts: list[str] = field(default_factory=list)
+    skipped: bool = False
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.skipped or self.exit_code == 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class RunReport:
+    ok: bool
+    exec: str
+    max_workers: int
+    pass1: list[WorkerResult]
+    pass2: list[WorkerResult]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "exec": self.exec,
+            "max_workers": self.max_workers,
+            "pass1": [r.to_dict() for r in self.pass1],
+            "pass2": [r.to_dict() for r in self.pass2],
+        }
+
+    def all_pass1_hosts(self) -> list[str]:
+        hosts: list[str] = []
+        seen: set[str] = set()
+        for result in self.pass1:
+            for host in result.live_hosts:
+                if host not in seen:
+                    seen.add(host)
+                    hosts.append(host)
+        return hosts
+
+
+def _looks_like_docker_ref(value: str) -> bool:
+    lowered = value.lower()
+    return lowered.startswith("docker://") or lowered.startswith("docker:")
+
+
+def _strip_docker_prefix(value: str) -> str:
+    if value.lower().startswith("docker://"):
+        return value[len("docker://") :]
+    if value.lower().startswith("docker:"):
+        return value[len("docker:") :]
+    return value
+
+
+def resolve_nmap(*, allow_missing: bool = False) -> ExecSpec:
+    explicit = os.environ.get(NMAP_ENV, "").strip()
+    if explicit:
+        if _looks_like_docker_ref(explicit):
+            image = _strip_docker_prefix(explicit).strip()
+            if not image:
+                raise RunnerError(f"{NMAP_ENV} docker ref is empty")
+            if not shutil.which("docker"):
+                raise RunnerError("COVEY_NMAP is a docker ref but docker is not on PATH")
+            return ExecSpec(kind="docker", nmap=image, display=f"docker://{image}")
+        path = Path(explicit)
+        if path.is_file():
+            return ExecSpec(kind="local", nmap=str(path), display=str(path))
+        found = shutil.which(explicit)
+        if found:
+            return ExecSpec(kind="local", nmap=found, display=found)
+        raise RunnerError(f"{NMAP_ENV}={explicit!r} is not an executable or docker ref")
+
+    found = shutil.which("nmap")
+    if found:
+        return ExecSpec(kind="local", nmap=found, display=found)
+
+    image = os.environ.get(NMAP_IMAGE_ENV, "").strip()
+    if image:
+        if not shutil.which("docker"):
+            raise RunnerError(f"{NMAP_IMAGE_ENV} set but docker is not on PATH")
+        return ExecSpec(kind="docker", nmap=image, display=f"docker://{image}")
+
+    if shutil.which("docker"):
+        return ExecSpec(
+            kind="docker",
+            nmap=DEFAULT_DOCKER_IMAGE,
+            display=f"docker://{DEFAULT_DOCKER_IMAGE}",
+        )
+
+    if allow_missing:
+        raise RunnerError("nmap not found")
+    raise RunnerError(
+        "nmap not found on PATH. This is BYO: install nmap, set COVEY_NMAP, "
+        "or point COVEY_NMAP at docker://<image-that-has-nmap>"
+    )
+
+
+def ensure_nmap(*, install_if_missing: bool = False) -> ExecSpec:
+    try:
+        return resolve_nmap()
+    except RunnerError:
+        if not install_if_missing:
+            raise
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install nmap: apt-get not available")
+    update = subprocess.run(
+        ["sudo", "apt-get", "update"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if update.returncode != 0:
+        raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+    install = subprocess.run(
+        ["sudo", "apt-get", "install", "-y", "nmap"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        raise RunnerError(f"apt-get install nmap failed: {install.stderr[-400:]}")
+    found = shutil.which("nmap")
+    if not found:
+        raise RunnerError("nmap installed but still not on PATH")
+    return ExecSpec(kind="local", nmap=found, display=found)
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.write_text(text, encoding="utf-8")
+
+
+def _run_one(
+    worker: Worker,
+    spec: ExecSpec,
+    *,
+    cwd: Path,
+    timeout: int,
+    adapter: Adapter,
+) -> WorkerResult:
+    if not worker.argv:
+        raise RunnerError(f"worker {worker.id} has no concrete argv")
+    artifact_dir = cwd / "shards" / worker.id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    executed = spec.wrap(worker.argv, cwd=cwd)
+    _write_text(artifact_dir / "argv.json", json.dumps(executed, indent=2) + "\n")
+    _write_text(artifact_dir / "target.txt", worker.target + "\n")
+    try:
+        completed = subprocess.run(
+            executed,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        _write_text(artifact_dir / "stdout.log", exc.stdout or "")
+        _write_text(artifact_dir / "stderr.log", exc.stderr or "")
+        _write_text(artifact_dir / "exit_code", "timeout\n")
+        return WorkerResult(
+            id=worker.id,
+            shard_id=worker.shard_id,
+            stage=worker.stage,
+            target=worker.target,
+            argv=executed,
+            exit_code=124,
+            artifact_dir=str(artifact_dir),
+            error=f"timeout after {timeout}s",
+        )
+
+    _write_text(artifact_dir / "stdout.log", completed.stdout or "")
+    _write_text(artifact_dir / "stderr.log", completed.stderr or "")
+    _write_text(artifact_dir / "exit_code", f"{completed.returncode}\n")
+
+    live: list[str] = []
+    if worker.stage == "pass1":
+        live = adapter.parse_live_hosts(artifact_dir)
+        _write_text(
+            artifact_dir / "live_hosts.json", json.dumps(live, indent=2) + "\n"
+        )
+
+    return WorkerResult(
+        id=worker.id,
+        shard_id=worker.shard_id,
+        stage=worker.stage,
+        target=worker.target,
+        argv=executed,
+        exit_code=completed.returncode,
+        artifact_dir=str(artifact_dir),
+        live_hosts=live,
+    )
+
+
+def _run_stage(
+    workers: list[Worker],
+    spec: ExecSpec,
+    *,
+    cwd: Path,
+    max_workers: int,
+    timeout: int,
+    adapter: Adapter,
+) -> list[WorkerResult]:
+    if not workers:
+        return []
+    pool = max(1, min(max_workers, len(workers)))
+    results: list[WorkerResult] = []
+    with ThreadPoolExecutor(max_workers=pool) as executor:
+        futures = {
+            executor.submit(
+                _run_one, worker, spec, cwd=cwd, timeout=timeout, adapter=adapter
+            ): worker
+            for worker in workers
+        }
+        for future in as_completed(futures):
+            results.append(future.result())
+    order = {worker.id: index for index, worker in enumerate(workers)}
+    results.sort(key=lambda item: order.get(item.id, 0))
+    return results
+
+
+def _materialize_pass2(
+    plan: Plan,
+    pass1: list[WorkerResult],
+    adapter: Adapter,
+) -> list[Worker]:
+    live_by_shard = {result.shard_id: result.live_hosts for result in pass1}
+    ready: list[Worker] = []
+    for worker in plan.pass2_workers:
+        hosts = [h for h in live_by_shard.get(worker.shard_id, []) if h]
+        template = worker.argv_template or []
+        if not hosts:
+            continue
+        argv = (
+            adapter.pass2_argv(hosts, _out_prefix_from_template(template))
+            if not template
+            else materialize_template(template, hosts)
+        )
+        ready.append(
+            Worker(
+                id=worker.id,
+                shard_id=worker.shard_id,
+                target=",".join(hosts),
+                stage="pass2",
+                argv=argv,
+            )
+        )
+    return ready
+
+
+def _out_prefix_from_template(template: list[str]) -> str:
+    if "-oA" in template:
+        idx = template.index("-oA")
+        if idx + 1 < len(template):
+            return template[idx + 1]
+    return "scan"
+
+
+def run_plan(
+    plan: Plan,
+    *,
+    out_root: Path | str = "out",
+    spec: ExecSpec | None = None,
+    adapter: Adapter | None = None,
+    timeout: int = DEFAULT_TIMEOUT_SEC,
+) -> RunReport:
+    cwd = Path(out_root)
+    cwd.mkdir(parents=True, exist_ok=True)
+    plugin = adapter or NmapAdapter()
+    resolved = spec or resolve_nmap()
+    max_workers = max(1, min(plan.max_workers, 4))
+
+    pass1 = _run_stage(
+        plan.pass1_workers,
+        resolved,
+        cwd=cwd,
+        max_workers=max_workers,
+        timeout=timeout,
+        adapter=plugin,
+    )
+    pass2_workers = _materialize_pass2(plan, pass1, plugin)
+    pass2 = _run_stage(
+        pass2_workers,
+        resolved,
+        cwd=cwd,
+        max_workers=max_workers,
+        timeout=timeout,
+        adapter=plugin,
+    )
+    # Record skipped pass2 workers (no live hosts) so the report is complete.
+    ran_ids = {item.id for item in pass2}
+    for worker in plan.pass2_workers:
+        if worker.id in ran_ids:
+            continue
+        artifact_dir = cwd / "shards" / worker.id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        _write_text(artifact_dir / "skipped.txt", "no live hosts from pass1\n")
+        pass2.append(
+            WorkerResult(
+                id=worker.id,
+                shard_id=worker.shard_id,
+                stage="pass2",
+                target="",
+                argv=[],
+                exit_code=0,
+                artifact_dir=str(artifact_dir),
+                skipped=True,
+            )
+        )
+    pass2.sort(key=lambda item: item.id)
+
+    for result in pass2:
+        if result.skipped:
+            continue
+        allowed = set()
+        for p1 in pass1:
+            if p1.shard_id == result.shard_id:
+                allowed.update(p1.live_hosts)
+        targeted = [h for h in result.target.split(",") if h]
+        extra = [h for h in targeted if h not in allowed]
+        if extra:
+            result.error = f"pass2 targeted hosts not in pass1: {extra}"
+            result.exit_code = result.exit_code or 2
+
+    ok = all(item.ok and not item.error for item in pass1 + pass2)
+    report = RunReport(
+        ok=ok,
+        exec=resolved.display,
+        max_workers=max_workers,
+        pass1=pass1,
+        pass2=pass2,
+    )
+    (cwd / "run_report.json").write_text(
+        json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8"
+    )
+    return report
