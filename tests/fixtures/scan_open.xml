@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<nmaprun scanner="nmap" args="nmap -sV -p 22 127.0.0.1" start="1" version="7.94">
+  <host>
+    <status state="up" reason="localhost-response"/>
+    <address addr="127.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open" reason="syn-ack"/>
+        <service name="ssh" product="OpenSSH"/>
+      </port>
+      <port protocol="tcp" portid="80">
+        <state state="closed" reason="reset"/>
+      </port>
+    </ports>
+  </host>
+</nmaprun>

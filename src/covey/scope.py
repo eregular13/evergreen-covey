@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,10 @@ HMAC_ENV = "COVEY_SCOPE_HMAC_KEY"
 _MAX_WORKERS_DEFAULT = 2
 _MAX_WORKERS_CEILING = 4
 _MAX_SHARDS_DEFAULT = 64
+
+# nmap-ish port lists: 22 / 22,80,443 / 8000-8080 / T:22,U:53
+_PORT_SPEC_RE = re.compile(r"^[0-9TU:,-]+$", re.IGNORECASE)
+_HOST_TIMEOUT_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)?[smh]?$", re.IGNORECASE)
 
 
 def _utc_now() -> datetime:
@@ -95,6 +100,22 @@ class Target:
 
 
 @dataclass
+class Deepen:
+    """SCOPE-owned pass2 / deepen parameters (Palisade P0: ports are not silent)."""
+
+    ports: str | None = None
+    host_timeout: str | None = None
+
+    def to_dict(self) -> dict[str, str]:
+        data: dict[str, str] = {}
+        if self.ports:
+            data["ports"] = self.ports
+        if self.host_timeout:
+            data["host_timeout"] = self.host_timeout
+        return data
+
+
+@dataclass
 class Scope:
     version: int
     demo: bool
@@ -111,6 +132,7 @@ class Scope:
     small_tile: int
     signature: str
     raw: dict[str, Any] = field(repr=False)
+    deepen: Deepen = field(default_factory=Deepen)
 
     @property
     def listed_cidrs(self) -> set[str]:
@@ -157,6 +179,86 @@ def _load_mapping(source: str | Path | dict[str, Any]) -> dict[str, Any]:
     if not isinstance(loaded, dict):
         raise ScopeError("SCOPE must be a mapping")
     return loaded
+
+
+def normalize_port_spec(raw: Any, *, field_name: str) -> str:
+    """Fail-closed port list. Empty or injectable strings are refused."""
+    if raw is None:
+        raise ScopeError(f"SCOPE {field_name} is empty")
+    if isinstance(raw, bool):
+        raise ScopeError(f"SCOPE {field_name} must be a port list")
+    if isinstance(raw, int):
+        if raw < 1 or raw > 65535:
+            raise ScopeError(f"SCOPE {field_name} port out of range: {raw}")
+        return str(raw)
+    if isinstance(raw, list):
+        if not raw:
+            raise ScopeError(f"SCOPE {field_name} is empty")
+        parts = [normalize_port_spec(item, field_name=field_name) for item in raw]
+        return ",".join(parts)
+    if not isinstance(raw, str):
+        raise ScopeError(f"SCOPE {field_name} must be a port list")
+    text = raw.strip().replace(" ", "")
+    if not text:
+        raise ScopeError(f"SCOPE {field_name} is empty")
+    if not _PORT_SPEC_RE.fullmatch(text):
+        raise ScopeError(f"SCOPE {field_name} has invalid characters")
+    tokens = [part for part in text.split(",") if part]
+    if not tokens:
+        raise ScopeError(f"SCOPE {field_name} is empty")
+    for token in tokens:
+        body = token.split(":", 1)[-1] if token[:1] in "TUtu" and ":" in token else token
+        for edge in body.split("-"):
+            if not edge.isdigit():
+                raise ScopeError(f"SCOPE {field_name} is not a port list: {token}")
+            number = int(edge)
+            if number < 1 or number > 65535:
+                raise ScopeError(f"SCOPE {field_name} port out of range: {number}")
+    return text
+
+
+def normalize_host_timeout(raw: Any, *, field_name: str) -> str:
+    if raw is None:
+        raise ScopeError(f"SCOPE {field_name} is empty")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        if raw <= 0:
+            raise ScopeError(f"SCOPE {field_name} must be positive")
+        return f"{int(raw)}s" if float(raw) == int(raw) else f"{raw}s"
+    if not isinstance(raw, str) or not raw.strip():
+        raise ScopeError(f"SCOPE {field_name} is empty")
+    text = raw.strip()
+    if not _HOST_TIMEOUT_RE.fullmatch(text):
+        raise ScopeError(f"SCOPE {field_name} is not a duration (e.g. 8s)")
+    return text
+
+
+def parse_deepen(data: dict[str, Any]) -> Deepen:
+    """Read ``pass2:`` / ``deepen:`` / top-level ``ports``. ``pass2`` wins on clash."""
+    merged: dict[str, Any] = {}
+    for key in ("deepen", "pass2"):
+        block = data.get(key)
+        if block is None:
+            continue
+        if isinstance(block, (str, int, list)):
+            merged["ports"] = block
+            continue
+        if not isinstance(block, dict):
+            raise ScopeError(f"SCOPE {key} must be a mapping or port list")
+        for name, value in block.items():
+            if value is not None:
+                merged[name] = value
+    if "ports" not in merged and data.get("ports") is not None:
+        merged["ports"] = data.get("ports")
+
+    ports = None
+    if "ports" in merged:
+        ports = normalize_port_spec(merged["ports"], field_name="pass2.ports")
+    host_timeout = None
+    if "host_timeout" in merged:
+        host_timeout = normalize_host_timeout(
+            merged["host_timeout"], field_name="pass2.host_timeout"
+        )
+    return Deepen(ports=ports, host_timeout=host_timeout)
 
 
 def parse_targets(raw: Any, *, global_allow_wide: bool) -> list[Target]:
@@ -245,6 +347,7 @@ def from_mapping(data: dict[str, Any], *, verify: bool = True) -> Scope:
         hi=4096,
     )
     adapter = str(data.get("adapter") or "nmap").strip() or "nmap"
+    deepen = parse_deepen(data)
     default_tile = _as_int(
         tile.get("default_prefix"),
         default=DEFAULT_TILE_PREFIX,
@@ -278,6 +381,7 @@ def from_mapping(data: dict[str, Any], *, verify: bool = True) -> Scope:
         default_tile=default_tile,
         small_tile=small_tile,
         signature=str(data.get("signature") or ""),
+        deepen=deepen,
         raw=data,
     )
     return scope

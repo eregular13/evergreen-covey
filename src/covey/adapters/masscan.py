@@ -33,7 +33,7 @@ class MasscanAdapter(LiveAdapter):
         require_target_prefix(".", out_prefix, name=self.name)
         return [
             "masscan",
-            "-p22,80,443,3389,8080",
+            f"-p{self.pass2_ports}",
             "--rate",
             "500",
             "--wait",

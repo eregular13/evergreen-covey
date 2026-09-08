@@ -118,7 +118,7 @@ def tool_env_var(name: str) -> str:
     return "COVEY_" + normalize_adapter_name(name).upper().replace("-", "_")
 
 
-def adapter_for(name: str) -> Adapter:
+def adapter_for(name: str, *, deepen: object | None = None) -> Adapter:
     key = normalize_adapter_name(name)
     key = _ALIASES.get(key, key)
     if key in FORBIDDEN_LIVE:
@@ -132,7 +132,10 @@ def adapter_for(name: str) -> Adapter:
     factory = _FACTORIES.get(key)
     if factory is None:
         raise AdapterError(f"unknown adapter {name!r}")
-    return factory()
+    adapter = factory()
+    if deepen is not None and hasattr(adapter, "apply_deepen"):
+        adapter.apply_deepen(deepen)
+    return adapter
 
 
 def file_drop_adapter(name: str = "openvas") -> OpenVASFileDrop:

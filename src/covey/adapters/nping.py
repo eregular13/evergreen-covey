@@ -16,6 +16,7 @@ from covey.adapters.common import (
 class NpingAdapter(LiveAdapter):
     name = "nping"
     binary = "nping"
+    default_pass2_ports = "80"
 
     def pass1_argv(self, target: str, out_prefix: str) -> list[str]:
         require_target_prefix(target, out_prefix, name=self.name)
@@ -24,7 +25,7 @@ class NpingAdapter(LiveAdapter):
 
     def pass2_argv_template(self, out_prefix: str) -> list[str]:
         require_target_prefix(".", out_prefix, name=self.name)
-        return ["nping", "--tcp", "-p", "80", "-c", "1", "--delay", "200ms", "{hosts}"]
+        return ["nping", "--tcp", "-p", self.pass2_port_first, "-c", "1", "--delay", "200ms", "{hosts}"]
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         blob = read_artifact_blob(artifact_dir)

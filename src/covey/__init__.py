@@ -2,10 +2,11 @@
 
 __version__ = "0.1.0"
 
-from covey.errors import CoveyError, RunnerError, ScopeError, ShardError
+from covey.errors import CoveyError, ExportError, RunnerError, ScopeError, ShardError
 
 __all__ = [
     "CoveyError",
+    "ExportError",
     "RunnerError",
     "ScopeError",
     "ShardError",

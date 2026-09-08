@@ -31,7 +31,7 @@ class NaabuAdapter(LiveAdapter):
             "{hosts}",
             "-silent",
             "-p",
-            "22,80,443,3389,8080",
+            self.pass2_ports,
             "-o",
             f"{out_prefix}.txt",
         ]
@@ -46,7 +46,7 @@ class NaabuAdapter(LiveAdapter):
             ",".join(hosts),
             "-silent",
             "-p",
-            "22,80,443,3389,8080",
+            self.pass2_ports,
             "-o",
             f"{out_prefix}.txt",
         ]

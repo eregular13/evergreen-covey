@@ -33,7 +33,7 @@ class RustscanAdapter(LiveAdapter):
             "5000",
             "-g",
             "-p",
-            "22,80,443,3389,8080",
+            self.pass2_ports,
         ]
 
     def pass2_argv(self, hosts: list[str], out_prefix: str) -> list[str]:
@@ -48,7 +48,7 @@ class RustscanAdapter(LiveAdapter):
             "5000",
             "-g",
             "-p",
-            "22,80,443,3389,8080",
+            self.pass2_ports,
         ]
 
 

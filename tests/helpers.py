@@ -30,7 +30,7 @@ def signed_scope_dict(**overrides) -> dict:
         "targets": [{"cidr": "10.42.0.0/28"}],
     }
     for key, value in overrides.items():
-        if key in {"consent", "window", "tile"} and isinstance(value, dict):
+        if key in {"consent", "window", "tile", "pass2", "deepen"} and isinstance(value, dict):
             merged = dict(data.get(key) or {})
             merged.update(value)
             data[key] = merged

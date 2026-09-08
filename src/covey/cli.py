@@ -1,4 +1,4 @@
-"""CLI: python -m covey plan|run|prove|sign."""
+"""CLI: python -m covey plan|run|prove|export|sign."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 
 from covey import __version__
 from covey.errors import CoveyError
+from covey.export import export_pack
 from covey.plan import build_plan
 from covey.prove import run_prove
 from covey.runner import resolve_exec, run_plan
@@ -56,6 +57,16 @@ def _cmd_prove(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_export(args: argparse.Namespace) -> int:
+    summary = export_pack(Path(args.out))
+    print(f"wrote {summary['pack']} (run_id={summary['run_id']})")
+    print(f"  assets    {summary['assets']}")
+    print(f"  findings  {summary['findings']}")
+    print("  ingest    file_drop only — no RiskReady POST")
+    print("  honesty   surface map ≠ honeypot validated ≠ control operating effectiveness")
+    return 0
+
+
 def _cmd_sign(args: argparse.Namespace) -> int:
     path = Path(args.scope)
     signed = sign_file(path, in_place=True)
@@ -91,6 +102,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="do not apt-get install nmap if missing (fail instead)",
     )
     prove.set_defaults(func=_cmd_prove)
+
+    export = sub.add_parser(
+        "export",
+        help="write SoR-ready pack_drop from a prove/run out/ (file_drop only)",
+    )
+    export.add_argument(
+        "--out",
+        default="out",
+        help="prove/run artifact root; writes <out>/pack_drop/",
+    )
+    export.set_defaults(func=_cmd_export)
 
     sign = sub.add_parser("sign", help="HMAC-sign a demo SCOPE in place")
     sign.add_argument("--scope", required=True)

@@ -17,6 +17,7 @@ def test_committed_lab_scope_is_signed_and_tiny():
     assert cidrs == ["127.0.0.0/28"]
     assert all(not c.endswith("/8") for c in cidrs)
     assert "0.0.0.0/0" not in cidrs
+    assert scope.deepen.ports == "22"
 
 
 @pytest.mark.integration

@@ -1,4 +1,4 @@
-.PHONY: prove test unit venv clean
+.PHONY: prove test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -21,10 +21,15 @@ unit: venv
 test: venv
 	$(PY) -m pytest -q
 
+# Pack export from an existing prove/run out/ (no scanner spawn).
+export: venv
+	$(PY) -m covey export --out out
+
 # Full prove: BYO nmap (install on this VM if needed), shard the loopback
-# lab, run pass1+pass2 through the Covey runner, then unit + integration tests.
+# lab, run pass1+pass2 through the Covey runner, export pack_drop, then tests.
 prove: venv
 	$(PY) -m covey prove
+	$(PY) -m covey export --out out
 	$(PY) -m pytest -q
 
 clean:
