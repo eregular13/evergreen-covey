@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, or fping; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, or naabu; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -13,16 +13,24 @@ from covey.adapters.base import Adapter
 from covey.adapters.registry import E2E_PROVEN_ADAPTERS, adapter_for
 from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
-from covey.runner import ensure_fping, ensure_nmap, ensure_rustscan, run_plan
+from covey.runner import (
+    ensure_fping,
+    ensure_naabu,
+    ensure_nmap,
+    ensure_rustscan,
+    run_plan,
+)
 from covey.scope import load
 
 LAB_SCOPE = Path("examples/scope.lab.yaml")
 RUSTSCAN_LAB_SCOPE = Path("examples/scope.lab.rustscan.yaml")
 FPING_LAB_SCOPE = Path("examples/scope.lab.fping.yaml")
+NAABU_LAB_SCOPE = Path("examples/scope.lab.naabu.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
     "fping": FPING_LAB_SCOPE,
+    "naabu": NAABU_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -33,7 +41,7 @@ RUSTSCAN_LAB_PORT = 18080
 def _artifact_ok(directory: Path, adapter_name: str) -> bool:
     if adapter_name == "nmap":
         return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
-    if adapter_name in {"rustscan", "fping"}:
+    if adapter_name in {"rustscan", "fping", "naabu"}:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
         if not argv_path.is_file() or not stdout_path.is_file():
@@ -106,9 +114,9 @@ def _lab_port(scope) -> int:
     try:
         port = int(token)
     except ValueError as exc:
-        raise RunnerError(f"rustscan lab port is not an integer: {raw!r}") from exc
+        raise RunnerError(f"port-scanner lab port is not an integer: {raw!r}") from exc
     if not 1 <= port <= 65535:
-        raise RunnerError(f"rustscan lab port out of range: {port}")
+        raise RunnerError(f"port-scanner lab port out of range: {port}")
     return port
 
 
@@ -117,11 +125,11 @@ def loopback_lab_listeners(
     hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
     port: int = RUSTSCAN_LAB_PORT,
 ) -> Iterator[tuple[str, int]]:
-    """Bind a tiny TCP lab on loopback tiles so rustscan can observe open ports.
+    """Bind a tiny TCP lab on loopback tiles so port scanners can observe opens.
 
-    rustscan is a port scanner (unlike nmap ``-sn``). Without a listener,
-    pass1 finds no live hosts and prove fails closed. This is lab fixture,
-    not a fake rustscan result.
+    rustscan and naabu are port scanners (unlike nmap ``-sn``). Without a
+    listener, pass1 finds no live hosts and prove fails closed. This is lab
+    fixture, not a forged scanner result.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -148,7 +156,7 @@ def loopback_lab_listeners(
             except OSError as exc:
                 sock.close()
                 raise RunnerError(
-                    f"rustscan lab cannot bind {host}:{port}: {exc}"
+                    f"port-scanner lab cannot bind {host}:{port}: {exc}"
                 ) from exc
             sock.listen(32)
             sock.settimeout(0.25)
@@ -172,6 +180,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_rustscan(install_if_missing=install_if_missing)
     if name == "fping":
         return ensure_fping(install_if_missing=install_if_missing)
+    if name == "naabu":
+        return ensure_naabu(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -224,7 +234,7 @@ def run_prove(
         assert_report(plan, report, out, adapter_name=plugin.name)
         return report
 
-    if plugin.name == "rustscan":
+    if plugin.name in {"rustscan", "naabu"}:
         with loopback_lab_listeners(port=_lab_port(scope)):
             report = _execute()
     else:

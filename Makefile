@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -41,6 +41,11 @@ prove-rustscan: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-fping: venv
 	$(PY) -m covey prove --adapter fping --out out/fping
+
+# Fourth e2e-proven adapter. BYO naabu (GitHub release on this VM only).
+# Does not replace `make prove` (nmap stays the default).
+prove-naabu: venv
+	$(PY) -m covey prove --adapter naabu --out out/naabu
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info
