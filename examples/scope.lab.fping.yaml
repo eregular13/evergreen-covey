@@ -1,0 +1,24 @@
+# Evergreen Covey — signed demo SCOPE for the fping loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. fping is ICMP host discovery (like nmap -sn), so
+# loopback answers without a TCP lab listener.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey fping loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: fping
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+targets:
+- cidr: 127.0.0.0/28
+signature: 98b80ceaea8bb29c50d87ee40693617449385ee78cf4377187718264db32c04e

@@ -50,9 +50,20 @@ download the official GitHub release onto **this VM only**.
 
 `python -m covey prove --adapter rustscan`
 
+## fping (third e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_FPING`, or the prove path may
+`apt-get install fping` onto **this VM only**.
+
+- pass1: `-a -q -g <net> <broadcast>` — alive IPs on stdout
+- pass2: `-a -c 3` against pass1-live hosts
+- ICMP host discovery; loopback answers; no TCP lab listener
+
+`python -m covey prove --adapter fping`
+
 ## Other live BYO adapters (argv+unit only)
 
-masscan, naabu, fping, arp-scan, netdiscover, zmap, unicornscan,
+masscan, naabu, arp-scan, netdiscover, zmap, unicornscan,
 nping, hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
 whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.

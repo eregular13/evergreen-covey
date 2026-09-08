@@ -47,9 +47,21 @@ def test_committed_rustscan_lab_scope_is_signed_and_tiny():
     assert scope.deepen.ports == "18080"
 
 
-def test_e2e_proven_adapters_are_nmap_then_rustscan():
-    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan")
-    assert len(UNPROVEN_ADAPTERS) == 18
+def test_committed_fping_lab_scope_is_signed_and_tiny():
+    scope = load(Path("examples/scope.lab.fping.yaml"))
+    assert scope.demo is True
+    assert scope.adapter == "fping"
+    assert scope.max_workers <= 4
+    cidrs = [t.listed for t in scope.targets]
+    assert cidrs == ["127.0.0.0/28"]
+    assert all(not c.endswith("/8") for c in cidrs)
+    assert "0.0.0.0/0" not in cidrs
+    assert scope.deepen.ports is None
+
+
+def test_e2e_proven_adapters_are_nmap_rustscan_fping():
+    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan", "fping")
+    assert len(UNPROVEN_ADAPTERS) == 17
     assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
     assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
     assert UNPROVEN_ADAPTERS == tuple(
@@ -105,7 +117,7 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     texts = {path.name: path.read_text(encoding="utf-8") for path in HONESTY_DOCS}
     for name, text in texts.items():
         assert "E2E_PROVEN_ADAPTERS" in text, f"{name} must cite E2E_PROVEN_ADAPTERS"
-        assert "argv+unit only" in text, f"{name} must say the other 18 are argv+unit only"
+        assert "argv+unit only" in text, f"{name} must say remaining adapters are argv+unit only"
         lowered = text.lower()
         assert "do not claim" in lowered and "live" in lowered
         for proven in E2E_PROVEN_ADAPTERS:
@@ -129,11 +141,13 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
         assert f"`{unproven}`" in prove, f"PROVE.md must list unproven {unproven}"
     assert "fails closed" in prove
     assert "`UNPROVEN_ADAPTERS`" in prove or "UNPROVEN_ADAPTERS" in prove
-    third = re.search(r"^\| 3 \|", prove, re.MULTILINE)
-    assert third is None, "PROVE.md must not add a third live e2e row"
+    assert re.search(r"^\| 3 \| `fping`", prove, re.MULTILINE)
+    fourth = re.search(r"^\| 4 \|", prove, re.MULTILINE)
+    assert fourth is None, "PROVE.md must not add a fourth live e2e row"
 
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "prove-rustscan" in makefile
+    assert "prove-fping" in makefile
     for unproven in UNPROVEN_ADAPTERS:
         assert f"prove-{unproven}" not in makefile, (
             f"Makefile must not grow a live prove target for {unproven}"
@@ -184,3 +198,30 @@ def test_prove_invokes_byo_rustscan(tmp_path: Path):
     assert len(stdout_files) >= 2
     greppable = "\n".join(p.read_text(encoding="utf-8") for p in stdout_files)
     assert " -> [" in greppable
+
+
+@pytest.mark.integration
+def test_prove_invokes_byo_fping(tmp_path: Path):
+    try:
+        resolve_exec("fping")
+    except Exception:
+        pytest.skip("BYO fping not available")
+    summary = run_prove(
+        out_root=tmp_path, adapter="fping", install_if_missing=False
+    )
+    assert summary["ok"] is True
+    assert summary["adapter"] == "fping"
+    assert len(summary["shards"]) >= 2
+    assert summary["pass1_workers"] >= 2
+    assert summary["pass2_ran"] >= 1
+    assert summary["live_hosts"]
+    assert all(h.startswith("127.0.0.") for h in summary["live_hosts"])
+    argv_files = list(tmp_path.glob("shards/p1-*/argv.json"))
+    assert len(argv_files) >= 2
+    stdout_files = list(tmp_path.glob("shards/p1-*/stdout.log"))
+    assert len(stdout_files) >= 2
+    alive = "\n".join(p.read_text(encoding="utf-8") for p in stdout_files)
+    assert "127.0.0." in alive
+    for path in argv_files:
+        argv = path.read_text(encoding="utf-8")
+        assert "fping" in argv.lower()

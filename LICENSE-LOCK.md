@@ -19,9 +19,10 @@ into the tree, or commit:
 
 Operators bring their own scanner. Covey resolves the selected adapter
 binary from `PATH`, `COVEY_<TOOL>`, `COVEY_BIN`, or a user-supplied
-`docker://` image. The prove path may install Nmap **on the local prove
-VM only**; that binary is not part of git. Other live adapters are
-argv+parser only — never vendored, never apt-installed into the tree.
+`docker://` image. The prove path may install Nmap or fping **on the
+local prove VM only**; those binaries are not part of git. Other live
+adapters are argv+parser only — never vendored, never apt-installed
+into the tree.
 
 ## OpenVAS-class tools
 
