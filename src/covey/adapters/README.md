@@ -27,7 +27,7 @@ Set `file_drop_only = False` for tools the operator actually execs.
 Register in `covey.adapters.registry` (`adapter_for()`, `LIVE_ADAPTER_IDS`).
 Keep the same shard id / stage / `out/shards/<id>/` layout.
 
-## Nmap (proven)
+## Nmap (first e2e-proven)
 
 BYO only. Resolve from `PATH`, `COVEY_NMAP`, or a user image
 (`docker://your-nmap-image`). The operator provides the binary.
@@ -39,12 +39,23 @@ BYO only. Resolve from `PATH`, `COVEY_NMAP`, or a user image
 
 `make prove` still exercises this path.
 
-## Other live BYO adapters
+## rustscan (second e2e-proven)
 
-masscan, rustscan, naabu, fping, arp-scan, netdiscover, zmap, unicornscan,
+BYO only. Resolve from `PATH` / `COVEY_RUSTSCAN`, or the prove path may
+download the official GitHub release onto **this VM only**.
+
+- pass1: `-a <tile> -g -p <SCOPE ports>` — greppable, no nmap `--`
+- pass2: rustscan-only against pass1-live hosts
+- prove binds a loopback lab listener (port scanner ≠ ping sweep)
+
+`python -m covey prove --adapter rustscan`
+
+## Other live BYO adapters (argv+unit only)
+
+masscan, naabu, fping, arp-scan, netdiscover, zmap, unicornscan,
 nping, hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
-whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE.
-See `ADAPTERS.md` for argv, parse notes, and env vars.
+whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE,
+**not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
 The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`
 with a configurable entrypoint.

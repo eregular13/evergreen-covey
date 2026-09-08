@@ -1,24 +1,52 @@
-"""End-to-end prove: BYO nmap, sharded loopback, multi-pass artifacts."""
+"""End-to-end prove: BYO nmap or rustscan, sharded loopback, multi-pass artifacts."""
 
 from __future__ import annotations
 
 import json
+import socket
+import threading
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
-from covey.adapters.registry import adapter_for
+from covey.adapters.base import Adapter
+from covey.adapters.registry import E2E_PROVEN_ADAPTERS, adapter_for
 from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
-from covey.runner import ensure_nmap, run_plan
+from covey.runner import ensure_nmap, ensure_rustscan, run_plan
 from covey.scope import load
 
 LAB_SCOPE = Path("examples/scope.lab.yaml")
+RUSTSCAN_LAB_SCOPE = Path("examples/scope.lab.rustscan.yaml")
+LAB_SCOPES = {
+    "nmap": LAB_SCOPE,
+    "rustscan": RUSTSCAN_LAB_SCOPE,
+}
+
+# First usable host of each /30 tile of 127.0.0.0/28.
+RUSTSCAN_LAB_BIND = ("127.0.0.1", "127.0.0.5", "127.0.0.9", "127.0.0.13")
+RUSTSCAN_LAB_PORT = 18080
 
 
-def _artifact_ok(directory: Path) -> bool:
-    return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
+def _artifact_ok(directory: Path, adapter_name: str) -> bool:
+    if adapter_name == "nmap":
+        return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
+    if adapter_name == "rustscan":
+        argv_path = directory / "argv.json"
+        stdout_path = directory / "stdout.log"
+        if not argv_path.is_file() or not stdout_path.is_file():
+            return False
+        try:
+            argv = json.loads(argv_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(argv, list) or not argv:
+            return False
+        return "rustscan" in str(argv[0]).lower()
+    return False
 
 
-def assert_report(plan, report, out_root: Path) -> None:
+def assert_report(plan, report, out_root: Path, *, adapter_name: str = "nmap") -> None:
     if len(plan.shards) < 2 and len(plan.pass1_workers) < 2:
         raise RunnerError("prove requires ≥2 shards or ≥2 pass1 workers")
     if not report.pass1:
@@ -33,10 +61,11 @@ def assert_report(plan, report, out_root: Path) -> None:
     landed = 0
     for result in report.pass1:
         artifact_dir = Path(result.artifact_dir)
-        if _artifact_ok(artifact_dir):
+        if _artifact_ok(artifact_dir, adapter_name):
             landed += 1
         else:
-            raise RunnerError(f"prove: missing XML/gnmap under {artifact_dir}")
+            kind = "XML/gnmap" if adapter_name == "nmap" else "rustscan stdout/argv"
+            raise RunnerError(f"prove: missing {kind} under {artifact_dir}")
 
     live = report.all_pass1_hosts()
     if not live:
@@ -48,7 +77,7 @@ def assert_report(plan, report, out_root: Path) -> None:
 
     allowed = set(live)
     for result in ran_pass2:
-        if not _artifact_ok(Path(result.artifact_dir)):
+        if not _artifact_ok(Path(result.artifact_dir), adapter_name):
             raise RunnerError(f"prove: missing pass2 artifacts under {result.artifact_dir}")
         targeted = [h for h in result.target.split(",") if h]
         extra = [h for h in targeted if h not in allowed]
@@ -69,29 +98,137 @@ def assert_report(plan, report, out_root: Path) -> None:
         raise RunnerError("prove: expected artifacts for at least two shards")
 
 
+def _lab_port(scope) -> int:
+    raw = getattr(getattr(scope, "deepen", None), "ports", None) or str(RUSTSCAN_LAB_PORT)
+    token = str(raw).split(",")[0].strip()
+    try:
+        port = int(token)
+    except ValueError as exc:
+        raise RunnerError(f"rustscan lab port is not an integer: {raw!r}") from exc
+    if not 1 <= port <= 65535:
+        raise RunnerError(f"rustscan lab port out of range: {port}")
+    return port
+
+
+@contextmanager
+def loopback_lab_listeners(
+    hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
+    port: int = RUSTSCAN_LAB_PORT,
+) -> Iterator[tuple[str, int]]:
+    """Bind a tiny TCP lab on loopback tiles so rustscan can observe open ports.
+
+    rustscan is a port scanner (unlike nmap ``-sn``). Without a listener,
+    pass1 finds no live hosts and prove fails closed. This is lab fixture,
+    not a fake rustscan result.
+    """
+    sockets: list[socket.socket] = []
+    stop = threading.Event()
+
+    def accept_loop(sock: socket.socket) -> None:
+        while not stop.is_set():
+            try:
+                conn, _ = sock.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+            try:
+                conn.close()
+            except OSError:
+                pass
+
+    try:
+        for host in hosts:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError as exc:
+                sock.close()
+                raise RunnerError(
+                    f"rustscan lab cannot bind {host}:{port}: {exc}"
+                ) from exc
+            sock.listen(32)
+            sock.settimeout(0.25)
+            sockets.append(sock)
+            threading.Thread(target=accept_loop, args=(sock,), daemon=True).start()
+        yield hosts[0], port
+    finally:
+        stop.set()
+        for sock in sockets:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
+def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
+    name = adapter.name
+    if name == "nmap":
+        return ensure_nmap(install_if_missing=install_if_missing)
+    if name == "rustscan":
+        return ensure_rustscan(install_if_missing=install_if_missing)
+    raise RunnerError(
+        f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
+        f"{name} remains argv+unit only"
+    )
+
+
 def run_prove(
     *,
     out_root: Path | str = "out",
     scope_path: Path | str | None = None,
+    adapter: str | None = None,
     install_if_missing: bool = True,
 ) -> dict:
     out = Path(out_root)
     out.mkdir(parents=True, exist_ok=True)
-    path = Path(scope_path) if scope_path else LAB_SCOPE
+    wanted = (adapter or "").strip().lower() or None
+    if scope_path:
+        path = Path(scope_path)
+    elif wanted:
+        path = LAB_SCOPES.get(wanted)
+        if path is None:
+            raise RunnerError(
+                f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
+                f"{wanted} remains argv+unit only"
+            )
+    else:
+        path = LAB_SCOPE
     if not path.is_file():
         raise RunnerError(f"prove SCOPE not found: {path}")
 
-    spec = ensure_nmap(install_if_missing=install_if_missing)
     scope = load(path)
-    adapter = adapter_for(scope.adapter, deepen=scope.deepen)
-    plan = build_plan(scope, out_root=out, adapter=adapter)
+    if wanted and scope.adapter != wanted:
+        raise RunnerError(
+            f"SCOPE adapter is {scope.adapter!r}, prove --adapter {wanted}"
+        )
+    if scope.adapter not in E2E_PROVEN_ADAPTERS:
+        raise RunnerError(
+            f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
+            f"{scope.adapter} remains argv+unit only"
+        )
+
+    plugin = adapter_for(scope.adapter, deepen=scope.deepen)
+    spec = _ensure_binary(plugin, install_if_missing=install_if_missing)
+    plan = build_plan(scope, out_root=out, adapter=plugin)
     plan_path = out / "plan.json"
     plan_path.write_text(json.dumps(plan.to_dict(), indent=2) + "\n", encoding="utf-8")
 
-    report = run_plan(plan, out_root=out, spec=spec, adapter=adapter)
-    assert_report(plan, report, out)
+    def _execute():
+        report = run_plan(plan, out_root=out, spec=spec, adapter=plugin)
+        assert_report(plan, report, out, adapter_name=plugin.name)
+        return report
+
+    if plugin.name == "rustscan":
+        with loopback_lab_listeners(port=_lab_port(scope)):
+            report = _execute()
+    else:
+        report = _execute()
+
     summary = {
         "ok": True,
+        "adapter": plugin.name,
         "exec": spec.display,
         "shards": plan.shards,
         "pass1_workers": len(plan.pass1_workers),
@@ -111,6 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"prove failed: {exc}")
         return 1
     print("Evergreen Covey prove: OK")
+    print(f"  adapter     {summary.get('adapter', 'nmap')}")
     print(f"  exec        {summary['exec']}")
     print(f"  shards      {len(summary['shards'])} ({', '.join(summary['shards'])})")
     print(f"  pass1       {summary['pass1_workers']} workers")

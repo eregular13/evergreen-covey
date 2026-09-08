@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from covey.adapters import (
+    E2E_PROVEN_ADAPTERS,
     FILE_DROP_IDS,
     FORBIDDEN_LIVE,
     LIVE_ADAPTER_IDS,
@@ -24,6 +25,8 @@ def test_registry_lists_exactly_20_live_ids():
     assert len(ids) == 20
     assert len(set(ids)) == 20
     assert ids[0] == "nmap"
+    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan")
+    assert all(name in ids for name in E2E_PROVEN_ADAPTERS)
 
 
 @pytest.mark.parametrize("name", LIVE_ADAPTER_IDS)

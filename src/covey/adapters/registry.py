@@ -27,6 +27,10 @@ from covey.adapters.whatweb import WhatwebAdapter
 from covey.adapters.zmap import ZmapAdapter
 from covey.errors import AdapterError
 
+# End-to-end proven on a real BYO binary + signed loopback lab. Others are
+# argv+unit only — do not claim them live.
+E2E_PROVEN_ADAPTERS: tuple[str, ...] = ("nmap", "rustscan")
+
 # Authoritative live adapter ids (SCOPE adapter: field). Order is stable.
 LIVE_ADAPTER_IDS: tuple[str, ...] = (
     "nmap",

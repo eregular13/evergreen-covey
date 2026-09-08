@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
+import tarfile
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -22,6 +28,11 @@ BIN_ENV = "COVEY_BIN"
 ENTRYPOINT_ENV = "COVEY_ENTRYPOINT"
 DEFAULT_DOCKER_IMAGE = "instrumentisto/nmap"
 DEFAULT_TIMEOUT_SEC = 120
+RUSTSCAN_RELEASE = "2.4.1"
+RUSTSCAN_LINUX_X64_URL = (
+    "https://github.com/bee-san/RustScan/releases/download/"
+    f"{RUSTSCAN_RELEASE}/x86_64-linux-rustscan.tar.gz.zip"
+)
 
 
 @dataclass
@@ -228,6 +239,115 @@ def resolve_exec(tool: str = "nmap", *, allow_missing: bool = False) -> ExecSpec
 
 def resolve_nmap(*, allow_missing: bool = False) -> ExecSpec:
     return resolve_exec("nmap", allow_missing=allow_missing)
+
+
+def _prepend_path(directory: Path) -> None:
+    current = os.environ.get("PATH", "")
+    prefix = str(directory)
+    parts = [p for p in current.split(os.pathsep) if p]
+    if prefix not in parts:
+        os.environ["PATH"] = prefix + os.pathsep + current if current else prefix
+
+
+def _install_rustscan_release() -> Path:
+    """Download the official rustscan release onto this VM. Never into git."""
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        raise RunnerError(
+            f"no rustscan GitHub release mapping for machine={machine!r}; "
+            "install rustscan yourself and set COVEY_RUSTSCAN"
+        )
+    dest_dir = Path.home() / ".local" / "bin"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "rustscan"
+    try:
+        with tempfile.TemporaryDirectory(prefix="covey-rustscan-") as tmp:
+            work = Path(tmp)
+            archive = work / "rustscan.tar.gz.zip"
+            urllib.request.urlretrieve(RUSTSCAN_LINUX_X64_URL, archive)
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(work)
+            tarballs = list(work.glob("*.tar.gz")) + list(work.glob("*.tgz"))
+            if not tarballs:
+                raise RunnerError("rustscan release zip did not contain a tarball")
+            with tarfile.open(tarballs[0], "r:gz") as tf:
+                tf.extractall(work)
+            found = None
+            for path in work.rglob("rustscan"):
+                if path.is_file() and os.access(path, os.X_OK):
+                    found = path
+                    break
+            if found is None:
+                raise RunnerError("rustscan binary missing from extracted release")
+            dest.write_bytes(found.read_bytes())
+            dest.chmod(0o755)
+    except urllib.error.URLError as exc:
+        raise RunnerError(f"download rustscan {RUSTSCAN_RELEASE} failed: {exc}") from exc
+    except RunnerError:
+        raise
+    except Exception as exc:
+        raise RunnerError(f"unpack rustscan {RUSTSCAN_RELEASE} failed: {exc}") from exc
+    if not dest.is_file():
+        raise RunnerError("rustscan download finished but binary is missing")
+    _prepend_path(dest_dir)
+    return dest
+
+
+def _cargo_install_rustscan() -> Path:
+    cargo = shutil.which("cargo")
+    if cargo is None:
+        raise RunnerError("cargo not on PATH; cannot cargo-install rustscan")
+    root = Path.home() / ".local"
+    completed = subprocess.run(
+        [cargo, "install", "rustscan", "--locked", "--root", str(root)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RunnerError(
+            "cargo install rustscan failed: " + (completed.stderr or completed.stdout)[-400:]
+        )
+    dest = root / "bin" / "rustscan"
+    if not dest.is_file():
+        raise RunnerError("cargo install rustscan finished but binary is missing")
+    _prepend_path(dest.parent)
+    return dest
+
+
+def ensure_rustscan(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO rustscan. Optionally fetch a release onto this VM only."""
+    try:
+        return resolve_exec("rustscan")
+    except RunnerError as missing:
+        if not install_if_missing:
+            raise
+        last = missing
+    errors: list[str] = [str(last)]
+    try:
+        path = _install_rustscan_release()
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="rustscan",
+        )
+    except RunnerError as exc:
+        errors.append(str(exc))
+    try:
+        path = _cargo_install_rustscan()
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="rustscan",
+        )
+    except RunnerError as exc:
+        errors.append(str(exc))
+    raise RunnerError(
+        "rustscan not available and prove-install failed (binary stays off git). "
+        + " | ".join(errors)
+    )
 
 
 def ensure_nmap(*, install_if_missing: bool = False) -> ExecSpec:

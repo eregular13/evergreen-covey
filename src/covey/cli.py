@@ -45,9 +45,11 @@ def _cmd_prove(args: argparse.Namespace) -> int:
     summary = run_prove(
         out_root=Path(args.out),
         scope_path=Path(args.scope) if args.scope else None,
+        adapter=args.adapter,
         install_if_missing=not args.no_install,
     )
     print("Evergreen Covey prove: OK")
+    print(f"  adapter     {summary.get('adapter', 'nmap')}")
     print(f"  exec        {summary['exec']}")
     print(f"  shards      {len(summary['shards'])} ({', '.join(summary['shards'])})")
     print(f"  pass1       {summary['pass1_workers']} workers")
@@ -95,11 +97,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     prove = sub.add_parser("prove", help="signed loopback lab: shard, run, assert artifacts")
     prove.add_argument("--scope", default=None, help="override lab SCOPE (default examples/scope.lab.yaml)")
+    prove.add_argument(
+        "--adapter",
+        default=None,
+        help="e2e-proven adapter: nmap (default) or rustscan",
+    )
     prove.add_argument("--out", default="out")
     prove.add_argument(
         "--no-install",
         action="store_true",
-        help="do not apt-get install nmap if missing (fail instead)",
+        help="do not install a missing BYO binary (nmap via apt, rustscan via GitHub release)",
     )
     prove.set_defaults(func=_cmd_prove)
 

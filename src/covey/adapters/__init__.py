@@ -3,6 +3,7 @@ from covey.adapters.nmap import NmapAdapter, get_adapter
 from covey.adapters.openvas import OpenVASFileDrop
 from covey.adapters.registry import (
     BINARY_ALIASES,
+    E2E_PROVEN_ADAPTERS,
     FILE_DROP_IDS,
     FORBIDDEN_LIVE,
     LIVE_ADAPTER_IDS,
@@ -15,6 +16,7 @@ from covey.adapters.registry import (
 __all__ = [
     "Adapter",
     "BINARY_ALIASES",
+    "E2E_PROVEN_ADAPTERS",
     "FILE_DROP_IDS",
     "FORBIDDEN_LIVE",
     "LIVE_ADAPTER_IDS",
