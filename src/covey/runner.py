@@ -385,6 +385,37 @@ def ensure_nmap(*, install_if_missing: bool = False) -> ExecSpec:
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="nmap")
 
 
+def ensure_nping(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO nping. Optionally apt-install nmap (ships nping) on this VM only."""
+    try:
+        return resolve_exec("nping")
+    except RunnerError:
+        if not install_if_missing:
+            raise
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install nping: apt-get not available")
+    update = subprocess.run(
+        ["sudo", "apt-get", "update"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if update.returncode != 0:
+        raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+    install = subprocess.run(
+        ["sudo", "apt-get", "install", "-y", "nmap"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        raise RunnerError(f"apt-get install nmap (for nping) failed: {install.stderr[-400:]}")
+    found = shutil.which("nping")
+    if not found:
+        raise RunnerError("nmap installed but nping still not on PATH")
+    return ExecSpec(kind="local", binary=found, display=found, entrypoint="nping")
+
+
 def ensure_fping(*, install_if_missing: bool = False) -> ExecSpec:
     """Resolve BYO fping. Optionally apt-install onto this VM only."""
     try:

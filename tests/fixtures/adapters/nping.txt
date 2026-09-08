@@ -2,3 +2,5 @@ Starting Nping 0.7
 SENT (0.0001s) ICMP [10.0.0.1 > 10.9.8.7 Echo request]
 RCVD (0.0010s) ICMP [10.9.8.7 > 10.0.0.1 Echo reply (type=0/code=0) id=1 seq=1] IP [ttl=64]
 RCVD (0.0012s) ICMP [10.9.8.8 > 10.0.0.1 Echo reply (type=0/code=0) id=1 seq=1] IP [ttl=64]
+RCVD (0.0013s) Handshake with 10.9.8.7:18080 completed
+RCVD (0.0014s) Possible TCP RST received from 10.9.8.9:18080 --> Connection refused

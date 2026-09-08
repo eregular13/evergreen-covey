@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, or naabu; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, or nping; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from covey.runner import (
     ensure_fping,
     ensure_naabu,
     ensure_nmap,
+    ensure_nping,
     ensure_rustscan,
     run_plan,
 )
@@ -26,11 +27,13 @@ LAB_SCOPE = Path("examples/scope.lab.yaml")
 RUSTSCAN_LAB_SCOPE = Path("examples/scope.lab.rustscan.yaml")
 FPING_LAB_SCOPE = Path("examples/scope.lab.fping.yaml")
 NAABU_LAB_SCOPE = Path("examples/scope.lab.naabu.yaml")
+NPING_LAB_SCOPE = Path("examples/scope.lab.nping.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
     "fping": FPING_LAB_SCOPE,
     "naabu": NAABU_LAB_SCOPE,
+    "nping": NPING_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -41,7 +44,7 @@ RUSTSCAN_LAB_PORT = 18080
 def _artifact_ok(directory: Path, adapter_name: str) -> bool:
     if adapter_name == "nmap":
         return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
-    if adapter_name in {"rustscan", "fping", "naabu"}:
+    if adapter_name in {"rustscan", "fping", "naabu", "nping"}:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
         if not argv_path.is_file() or not stdout_path.is_file():
@@ -127,9 +130,9 @@ def loopback_lab_listeners(
 ) -> Iterator[tuple[str, int]]:
     """Bind a tiny TCP lab on loopback tiles so port scanners can observe opens.
 
-    rustscan and naabu are port scanners (unlike nmap ``-sn``). Without a
-    listener, pass1 finds no live hosts and prove fails closed. This is lab
-    fixture, not a forged scanner result.
+    rustscan, naabu, and nping --tcp-connect are TCP probes (unlike nmap
+    ``-sn``). Without a listener, pass1 finds no live hosts and prove fails
+    closed. This is lab fixture, not a forged scanner result.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -182,6 +185,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_fping(install_if_missing=install_if_missing)
     if name == "naabu":
         return ensure_naabu(install_if_missing=install_if_missing)
+    if name == "nping":
+        return ensure_nping(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -234,7 +239,7 @@ def run_prove(
         assert_report(plan, report, out, adapter_name=plugin.name)
         return report
 
-    if plugin.name in {"rustscan", "naabu"}:
+    if plugin.name in {"rustscan", "naabu", "nping"}:
         with loopback_lab_listeners(port=_lab_port(scope)):
             report = _execute()
     else:

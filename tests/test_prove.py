@@ -71,9 +71,21 @@ def test_committed_naabu_lab_scope_is_signed_and_tiny():
     assert scope.deepen.ports == "18080"
 
 
-def test_e2e_proven_adapters_are_nmap_rustscan_fping_naabu():
-    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan", "fping", "naabu")
-    assert len(UNPROVEN_ADAPTERS) == 16
+def test_committed_nping_lab_scope_is_signed_and_tiny():
+    scope = load(Path("examples/scope.lab.nping.yaml"))
+    assert scope.demo is True
+    assert scope.adapter == "nping"
+    assert scope.max_workers <= 4
+    cidrs = [t.listed for t in scope.targets]
+    assert cidrs == ["127.0.0.0/28"]
+    assert all(not c.endswith("/8") for c in cidrs)
+    assert "0.0.0.0/0" not in cidrs
+    assert scope.deepen.ports == "18080"
+
+
+def test_e2e_proven_adapters_are_nmap_rustscan_fping_naabu_nping():
+    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan", "fping", "naabu", "nping")
+    assert len(UNPROVEN_ADAPTERS) == 15
     assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
     assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
     assert UNPROVEN_ADAPTERS == tuple(
@@ -155,13 +167,15 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert "`UNPROVEN_ADAPTERS`" in prove or "UNPROVEN_ADAPTERS" in prove
     assert re.search(r"^\| 3 \| `fping`", prove, re.MULTILINE)
     assert re.search(r"^\| 4 \| `naabu`", prove, re.MULTILINE)
-    fifth = re.search(r"^\| 5 \|", prove, re.MULTILINE)
-    assert fifth is None, "PROVE.md must not add a fifth live e2e row"
+    assert re.search(r"^\| 5 \| `nping`", prove, re.MULTILINE)
+    sixth = re.search(r"^\| 6 \|", prove, re.MULTILINE)
+    assert sixth is None, "PROVE.md must not add a sixth live e2e row"
 
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "prove-rustscan" in makefile
     assert "prove-fping" in makefile
     assert "prove-naabu" in makefile
+    assert "prove-nping" in makefile
     for unproven in UNPROVEN_ADAPTERS:
         assert f"prove-{unproven}" not in makefile, (
             f"Makefile must not grow a live prove target for {unproven}"
@@ -266,4 +280,34 @@ def test_prove_invokes_byo_naabu(tmp_path: Path):
     for path in argv_files:
         argv = path.read_text(encoding="utf-8")
         assert "naabu" in argv.lower()
+        assert "18080" in argv
+
+
+@pytest.mark.integration
+def test_prove_invokes_byo_nping(tmp_path: Path):
+    try:
+        resolve_exec("nping")
+    except Exception:
+        pytest.skip("BYO nping not available")
+    summary = run_prove(
+        out_root=tmp_path, adapter="nping", install_if_missing=False
+    )
+    assert summary["ok"] is True
+    assert summary["adapter"] == "nping"
+    assert len(summary["shards"]) >= 2
+    assert summary["pass1_workers"] >= 2
+    assert summary["pass2_ran"] >= 1
+    assert summary["live_hosts"]
+    assert all(h.startswith("127.0.0.") for h in summary["live_hosts"])
+    argv_files = list(tmp_path.glob("shards/p1-*/argv.json"))
+    assert len(argv_files) >= 2
+    stdout_files = list(tmp_path.glob("shards/p1-*/stdout.log"))
+    assert len(stdout_files) >= 2
+    greppable = "\n".join(p.read_text(encoding="utf-8") for p in stdout_files)
+    assert "Handshake with" in greppable
+    assert "completed" in greppable
+    for path in argv_files:
+        argv = path.read_text(encoding="utf-8")
+        assert "nping" in argv.lower()
+        assert "--tcp-connect" in argv
         assert "18080" in argv

@@ -30,7 +30,7 @@ from covey.errors import AdapterError
 # End-to-end proven on a real BYO binary + signed loopback lab. Others are
 # argv+unit only — do not claim them live. Docs (PROVE.md / README) and
 # `python -m covey prove --adapter` must follow this tuple.
-E2E_PROVEN_ADAPTERS: tuple[str, ...] = ("nmap", "rustscan", "fping", "naabu")
+E2E_PROVEN_ADAPTERS: tuple[str, ...] = ("nmap", "rustscan", "fping", "naabu", "nping")
 
 # Authoritative live adapter ids (SCOPE adapter: field). Order is stable.
 LIVE_ADAPTER_IDS: tuple[str, ...] = (
@@ -56,7 +56,7 @@ LIVE_ADAPTER_IDS: tuple[str, ...] = (
     "tlsx",
 )
 
-# Derived: the 16 that must fail closed on prove. Do not add a fifth e2e
+# Derived: the 15 that must fail closed on prove. Do not add a sixth e2e
 # by editing docs — append to E2E_PROVEN_ADAPTERS only after a real prove.
 UNPROVEN_ADAPTERS: tuple[str, ...] = tuple(
     name for name in LIVE_ADAPTER_IDS if name not in E2E_PROVEN_ADAPTERS

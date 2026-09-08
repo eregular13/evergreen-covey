@@ -11,10 +11,11 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **rustscan** is the second (`python -m covey prove --adapter rustscan`).
 **fping** is the third (`python -m covey prove --adapter fping`).
 **naabu** is the fourth (`python -m covey prove --adapter naabu`).
-The other 16 remain argv+unit only — do not claim them live. Source of
-truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`) in
-`src/covey/adapters/registry.py`. See [ADAPTERS.md](ADAPTERS.md) and
-[PROVE.md](PROVE.md).
+**nping** is the fifth (`python -m covey prove --adapter nping`).
+The other 15 remain argv+unit only — do not claim them live. Source of
+truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
+`nping`) in `src/covey/adapters/registry.py`. See
+[ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
 ```
 discover shards → land XML/gnmap → optional pass2 on live hosts
@@ -60,7 +61,10 @@ rustscan is a port scanner, not a ping sweep. fping uses
 `examples/scope.lab.fping.yaml` (`adapter: fping`) and ICMP on loopback
 — no listener. naabu uses `examples/scope.lab.naabu.yaml` (`adapter:
 naabu`, SCOPE ports `18080`) and the same loopback lab listener; pass1
-is a connect scan of those SCOPE ports, not `-top-ports 100`. See
+is a connect scan of those SCOPE ports, not `-top-ports 100`. nping
+uses `examples/scope.lab.nping.yaml` (`adapter: nping`, SCOPE ports
+`18080`) and the same loopback lab listener; pass1 is unprivileged
+`--tcp-connect`, not raw `--icmp`/`--tcp` (those need root). See
 [PROVE.md](PROVE.md).
 
 ## BYO scanners
@@ -149,6 +153,7 @@ python -m covey prove
 python -m covey prove --adapter rustscan
 python -m covey prove --adapter fping
 python -m covey prove --adapter naabu
+python -m covey prove --adapter nping
 python -m covey export --out out
 # or
 make export
