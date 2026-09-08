@@ -6,7 +6,9 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh).** The other 13 ids are
-argv+unit only. See [PROVE.md](PROVE.md). Do not claim them live.
+argv+unit only. Source of truth: `E2E_PROVEN_ADAPTERS` in
+`src/covey/adapters/registry.py`. See [PROVE.md](PROVE.md). Do not claim
+them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
