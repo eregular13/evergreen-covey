@@ -9,8 +9,10 @@ netdiscover, zmap, unicornscan, nping, hping3, ike-scan, nbtscan,
 onesixtyone, braa, svmap, sslscan, whatweb, httpx, tlsx). The operator
 provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **rustscan** is the second (`python -m covey prove --adapter rustscan`).
-The other 18 remain argv+unit only — do not claim them live. See
-[ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
+The other 18 remain argv+unit only — do not claim them live. Source of
+truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`) in
+`src/covey/adapters/registry.py`. See [ADAPTERS.md](ADAPTERS.md) and
+[PROVE.md](PROVE.md).
 
 ```
 discover shards → land XML/gnmap → optional pass2 on live hosts

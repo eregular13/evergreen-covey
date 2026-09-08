@@ -14,7 +14,12 @@ The other **18** (`masscan`, `naabu`, `fping`, `arp-scan`, `netdiscover`,
 `onesixtyone`, `braa`, `svmap`, `sslscan`, `whatweb`, `httpx`, `tlsx`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
-`python -m covey prove --adapter masscan` (or any of the 18) **fails closed**.
+Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
+(`nmap`, `rustscan`). `UNPROVEN_ADAPTERS` is the derived remainder. Adding
+a third live e2e requires a real BYO prove — not a docs edit.
+
+`python -m covey prove --adapter masscan` (or any of the 18, with or
+without `--no-install`) **fails closed**.
 
 ## Lab SCOPE
 
