@@ -4,12 +4,13 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 `COVEY_BIN`, or `docker://<image>`). Nothing in this table is vendored.
 
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
-`rustscan` (second), `fping` (third), `naabu` (fourth).** The other 16
-ids are argv+unit only. See [PROVE.md](PROVE.md). Do not claim them live.
+`rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
+(fifth).** The other 15 ids are argv+unit only. See [PROVE.md](PROVE.md).
+Do not claim them live.
 
-The prove VM may install nmap (apt), rustscan (GitHub release / cargo),
-fping (apt), or naabu (GitHub release / go) **on that machine only** —
-never into git.
+The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
+release / cargo), fping (apt), or naabu (GitHub release / go) **on that
+machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -27,7 +28,7 @@ forbidden.
 | `netdiscover` | `netdiscover` | `-P -N -r <cidr>` | `-r host/32` per live host | ARP table IPv4 | `COVEY_NETDISCOVER` |
 | `zmap` | `zmap` | `-p 80` on the tile (`-B /dev/null` so RFC1918 labs work) | `-p 443` on `host/32` list | one IPv4 per line | `COVEY_ZMAP` |
 | `unicornscan` | `unicornscan` | `-mT <cidr>:80,443` | `-mT host:22,80,443,3389` | `TCP open a.b.c.d:port` | `COVEY_UNICORNSCAN` |
-| `nping` | `nping` | `--icmp` against tile hosts (Python expand) | `--tcp -p 80` live hosts | `RCVD` / Echo reply IPv4 | `COVEY_NPING` |
+| `nping` | `nping` | `--tcp-connect -p <SCOPE ports>` tile hosts (**5th e2e-proven**) | `--tcp-connect` live hosts | `Handshake with ip:port completed` (not refused `RCVD`) | `COVEY_NPING` |
 | `hping3` | `hping3` | `--icmp` to **tile broadcast** (single dest) | `--syn -p 80` first live host | `ip=a.b.c.d` reply lines | `COVEY_HPING3` |
 | `ike-scan` | `ike-scan` | IKE Main Mode on the CIDR | `--aggressive --id=vpn` hosts | handshake IPv4 | `COVEY_IKE_SCAN` |
 | `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR | `-v` on live hosts | leading IPv4 / name table | `COVEY_NBTSCAN` |
@@ -64,6 +65,12 @@ forbidden.
   `18080`) so the loopback prove is a tiny port list, not `-top-ports
   100`. masscan was preferred first; it cannot observe loopback SYN
   replies, so it stays argv+unit only.
+- **nping**: unprivileged `--tcp-connect` against SCOPE ports, not raw
+  `--icmp`/`--tcp` (those need root). Fifth e2e-proven adapter
+  (`python -m covey prove --adapter nping` / `make prove-nping`).
+  Prove binds the same loopback lab listener as rustscan/naabu.
+  Parse requires `Handshake with ip:port completed`; Connection
+  refused `RCVD` lines are not live hosts. httpx stays argv+unit.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools

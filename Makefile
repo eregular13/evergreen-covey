@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -46,6 +46,12 @@ prove-fping: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-naabu: venv
 	$(PY) -m covey prove --adapter naabu --out out/naabu
+
+# Fifth e2e-proven adapter. BYO nping (nmap apt on this VM only).
+# Unprivileged --tcp-connect against the loopback lab listener.
+# Does not replace `make prove` (nmap stays the default).
+prove-nping: venv
+	$(PY) -m covey prove --adapter nping --out out/nping
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

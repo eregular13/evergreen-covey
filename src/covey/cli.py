@@ -100,13 +100,13 @@ def build_parser() -> argparse.ArgumentParser:
     prove.add_argument(
         "--adapter",
         default=None,
-        help="e2e-proven adapter: nmap (default), rustscan, fping, or naabu",
+        help="e2e-proven adapter: nmap (default), rustscan, fping, naabu, or nping",
     )
     prove.add_argument("--out", default="out")
     prove.add_argument(
         "--no-install",
         action="store_true",
-        help="do not install a missing BYO binary (nmap/fping via apt, rustscan/naabu via GitHub release)",
+        help="do not install a missing BYO binary (nmap/nping/fping via apt, rustscan/naabu via GitHub release)",
     )
     prove.set_defaults(func=_cmd_prove)
 

@@ -26,12 +26,12 @@ def test_registry_lists_exactly_20_live_ids():
     assert len(ids) == 20
     assert len(set(ids)) == 20
     assert ids[0] == "nmap"
-    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan", "fping", "naabu")
+    assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan", "fping", "naabu", "nping")
     assert all(name in ids for name in E2E_PROVEN_ADAPTERS)
     assert UNPROVEN_ADAPTERS == tuple(
         name for name in ids if name not in E2E_PROVEN_ADAPTERS
     )
-    assert len(UNPROVEN_ADAPTERS) == 16
+    assert len(UNPROVEN_ADAPTERS) == 15
 
 
 @pytest.mark.parametrize("name", LIVE_ADAPTER_IDS)

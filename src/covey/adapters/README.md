@@ -72,10 +72,23 @@ download the official GitHub release onto **this VM only**.
 
 `python -m covey prove --adapter naabu`
 
+## nping (fifth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_NPING`, or the prove path may
+`apt-get install nmap` onto **this VM only** (the nmap package ships
+nping).
+
+- pass1: `--tcp-connect -p <SCOPE ports>` against expanded tile hosts
+- pass2: nping-only against pass1-live hosts
+- prove binds a loopback lab listener (TCP handshake ≠ ICMP; raw
+  `--icmp`/`--tcp` need root)
+
+`python -m covey prove --adapter nping`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-nping, hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
+hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
 whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
