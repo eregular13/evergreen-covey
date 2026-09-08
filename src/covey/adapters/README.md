@@ -118,11 +118,22 @@ download the official GitHub release onto **this VM only**.
 
 `python -m covey prove --adapter tlsx`
 
+## whatweb (ninth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_WHATWEB`, or the prove path may
+`apt-get install whatweb` onto **this VM only**.
+
+- pass1: `-a 1` against `http://host:<SCOPE port>` for each usable tile host
+- pass2: `-a 3` against pass1-live host URLs
+- prove serves HTTP/1.1 200 (HTTP fingerprint ≠ bare TCP accept)
+
+`python -m covey prove --adapter whatweb`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-hping3, ike-scan, nbtscan, onesixtyone, braa, svmap,
-whatweb — same shard/stage kit, same fail-closed SCOPE,
+hping3, ike-scan, nbtscan, onesixtyone, braa, svmap
+— same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
 The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`
