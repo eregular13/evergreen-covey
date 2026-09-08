@@ -1,0 +1,5 @@
+Version: 2.1
+Connected to 10.9.8.7
+Testing SSL server 10.9.8.7 on port 443
+Connected to 10.9.8.8
+Testing SSL server 10.9.8.8 on port 443

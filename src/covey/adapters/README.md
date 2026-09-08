@@ -4,6 +4,8 @@ An adapter is a **pure argv + artifact parser**. Covey owns SCOPE, shards,
 plans, and the runner. The adapter never downloads a scanner and never
 apt-installs into the repository.
 
+Live ids (SCOPE `adapter:` field) are listed in [`ADAPTERS.md`](../../../ADAPTERS.md).
+
 ## Live adapter protocol
 
 Implement `covey.adapters.base.Adapter`:
@@ -11,15 +13,19 @@ Implement `covey.adapters.base.Adapter`:
 | Method | Role |
 | --- | --- |
 | `pass1_argv(target, out_prefix)` | Discover one shard. No spawn. |
-| `pass2_argv_template(out_prefix)` | Deepen template; include a `{hosts}` token. |
+| `pass2_argv_template(out_prefix)` | Deepen template; include a `{hosts}` token when the CLI takes hosts on argv. |
 | `pass2_argv(hosts, out_prefix)` | Concrete deepen argv for pass1-live hosts only. |
-| `parse_live_hosts(artifact_dir)` | Read XML/gnmap/etc. that the runner already landed. |
+| `parse_live_hosts(artifact_dir)` | Read XML/JSON/stdout the runner already landed. |
 
-Set `file_drop_only = False` for tools the operator actually execs (Nmap).
+Optional `stage_files(stage, target, out_prefix)` may return relative
+path → text sidecars (host lists, community files). The runner writes them
+under the artifact root immediately before spawn. Plan-time argv builders
+must not mkdir in the repo.
 
-Register by adding a module next to `nmap.py` and wiring it in
-`covey.plan.adapter_for()`. Keep the same shard id / stage / `out/shards/<id>/`
-layout so the runner stays unchanged.
+Set `file_drop_only = False` for tools the operator actually execs.
+
+Register in `covey.adapters.registry` (`adapter_for()`, `LIVE_ADAPTER_IDS`).
+Keep the same shard id / stage / `out/shards/<id>/` layout.
 
 ## Nmap (proven)
 
@@ -29,16 +35,26 @@ BYO only. Resolve from `PATH`, `COVEY_NMAP`, or a user image
 - pass1: `-sn` ping/discover on one tile
 - pass2: `-sV` **only** against hosts parsed live from that shard’s pass1 artifacts
 
+`make prove` still exercises this path.
+
+## Other live BYO adapters
+
+masscan, rustscan, naabu, fping, arp-scan, netdiscover, zmap, unicornscan,
+nping, hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
+whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE.
+See `ADAPTERS.md` for argv, parse notes, and env vars.
+
+The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`
+with a configurable entrypoint.
+
 ## OpenVAS-class (file_drop only)
 
-OpenVAS, Greenbone, and anything in that weight class **must not** gain a
-live spawn adapter. If you add them later:
+OpenVAS, Greenbone, and GVM **must not** gain a live spawn adapter.
+`covey.adapters.openvas.OpenVASFileDrop` sets `file_drop_only=True` and
+raises on every argv method. `adapter_for("openvas")` refuses a live plan.
 
-1. Accept operator-dropped XML/reports already written to disk.
-2. Parse and hang those files on the existing shard/stage kit.
-3. Raise if anyone asks for `pass1_argv` / `pass2_argv`.
-
-There is no OpenVAS live implementation in this repo. That is intentional.
+A later ingest adapter may hang operator-dropped artifacts on the same
+shard/stage kit. That is the only allowed path.
 
 ## Forbidden wrappers
 
