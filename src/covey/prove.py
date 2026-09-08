@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap or rustscan, sharded loopback, multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, or fping; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -13,14 +13,16 @@ from covey.adapters.base import Adapter
 from covey.adapters.registry import E2E_PROVEN_ADAPTERS, adapter_for
 from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
-from covey.runner import ensure_nmap, ensure_rustscan, run_plan
+from covey.runner import ensure_fping, ensure_nmap, ensure_rustscan, run_plan
 from covey.scope import load
 
 LAB_SCOPE = Path("examples/scope.lab.yaml")
 RUSTSCAN_LAB_SCOPE = Path("examples/scope.lab.rustscan.yaml")
+FPING_LAB_SCOPE = Path("examples/scope.lab.fping.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
+    "fping": FPING_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -31,7 +33,7 @@ RUSTSCAN_LAB_PORT = 18080
 def _artifact_ok(directory: Path, adapter_name: str) -> bool:
     if adapter_name == "nmap":
         return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
-    if adapter_name == "rustscan":
+    if adapter_name in {"rustscan", "fping"}:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
         if not argv_path.is_file() or not stdout_path.is_file():
@@ -42,7 +44,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
             return False
         if not isinstance(argv, list) or not argv:
             return False
-        return "rustscan" in str(argv[0]).lower()
+        return adapter_name in str(argv[0]).lower()
     return False
 
 
@@ -64,7 +66,7 @@ def assert_report(plan, report, out_root: Path, *, adapter_name: str = "nmap") -
         if _artifact_ok(artifact_dir, adapter_name):
             landed += 1
         else:
-            kind = "XML/gnmap" if adapter_name == "nmap" else "rustscan stdout/argv"
+            kind = "XML/gnmap" if adapter_name == "nmap" else f"{adapter_name} stdout/argv"
             raise RunnerError(f"prove: missing {kind} under {artifact_dir}")
 
     live = report.all_pass1_hosts()
@@ -168,6 +170,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_nmap(install_if_missing=install_if_missing)
     if name == "rustscan":
         return ensure_rustscan(install_if_missing=install_if_missing)
+    if name == "fping":
+        return ensure_fping(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"

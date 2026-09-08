@@ -9,8 +9,9 @@ netdiscover, zmap, unicornscan, nping, hping3, ike-scan, nbtscan,
 onesixtyone, braa, svmap, sslscan, whatweb, httpx, tlsx). The operator
 provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **rustscan** is the second (`python -m covey prove --adapter rustscan`).
-The other 18 remain argv+unit only — do not claim them live. Source of
-truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`) in
+**fping** is the third (`python -m covey prove --adapter fping`).
+The other 17 remain argv+unit only — do not claim them live. Source of
+truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`) in
 `src/covey/adapters/registry.py`. See [ADAPTERS.md](ADAPTERS.md) and
 [PROVE.md](PROVE.md).
 
@@ -54,7 +55,9 @@ only against hosts that pass1 marked up. Artifacts land in `out/shards/`.
 
 rustscan uses the same tile honesty (`examples/scope.lab.rustscan.yaml`,
 `adapter: rustscan`, SCOPE ports `18080`) plus a loopback lab listener —
-rustscan is a port scanner, not a ping sweep. See [PROVE.md](PROVE.md).
+rustscan is a port scanner, not a ping sweep. fping uses
+`examples/scope.lab.fping.yaml` (`adapter: fping`) and ICMP on loopback
+— no listener. See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
@@ -140,6 +143,7 @@ python -m covey plan --scope examples/scope.lab.yaml --out out/plan.json
 python -m covey run  --scope examples/scope.lab.yaml --out out
 python -m covey prove
 python -m covey prove --adapter rustscan
+python -m covey prove --adapter fping
 python -m covey export --out out
 # or
 make export

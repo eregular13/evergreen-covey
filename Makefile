@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -36,6 +36,11 @@ prove: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-rustscan: venv
 	$(PY) -m covey prove --adapter rustscan --out out/rustscan
+
+# Third e2e-proven adapter. BYO fping (apt on this VM only).
+# Does not replace `make prove` (nmap stays the default).
+prove-fping: venv
+	$(PY) -m covey prove --adapter fping --out out/fping
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info
