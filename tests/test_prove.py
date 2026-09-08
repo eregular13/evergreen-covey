@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from covey.export import export_pack
 from covey.prove import run_prove
 from covey.runner import resolve_nmap
 from covey.scope import load
@@ -35,3 +36,8 @@ def test_prove_invokes_byo_nmap(tmp_path: Path):
     assert all(h.startswith("127.0.0.") for h in summary["live_hosts"])
     xmls = list(tmp_path.glob("shards/*/scan.xml"))
     assert len(xmls) >= 3
+    pack = export_pack(tmp_path)
+    meta = Path(pack["pack"]) / "meta.json"
+    assert meta.is_file()
+    assert (Path(pack["pack"]) / "README_EXPORT.md").is_file()
+    assert (Path(pack["pack"]) / "in" / "nmap").is_dir()
