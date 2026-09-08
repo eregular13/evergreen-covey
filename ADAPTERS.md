@@ -5,12 +5,13 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
-(fifth), `httpx` (sixth).** The other 14 ids are argv+unit only. See
-[PROVE.md](PROVE.md). Do not claim them live.
+(fifth), `httpx` (sixth), `sslscan` (seventh).** The other 13 ids are
+argv+unit only. See [PROVE.md](PROVE.md). Do not claim them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
-release / cargo), fping (apt), naabu (GitHub release / go), or httpx
-(GitHub release / go) **on that machine only** — never into git.
+release / cargo), fping (apt), naabu (GitHub release / go), httpx
+(GitHub release / go), or sslscan (apt) **on that machine only** — never
+into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -35,7 +36,7 @@ forbidden.
 | `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file | extra communities on live hosts | `ip [community] …` | `COVEY_ONESIXTYONE` |
 | `braa` | `braa` | `public@first-last:sysDescr` | sysDescr + sysName per host | `ip:oid:value` | `COVEY_BRAA` |
 | `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
-| `sslscan` | `sslscan` | TLS probe of the **first usable tile host** | `--show-certificate` first live host | `Connected to` / XML host | `COVEY_SSLSCAN` |
+| `sslscan` | `sslscan` | TLS probe of the **first usable tile host** as `host:<SCOPE port>` (**7th e2e-proven**) | `--show-certificate` first live host | `Connected to` / XML host (not refused `ERROR`) | `COVEY_SSLSCAN` |
 | `whatweb` | `whatweb` | `-a 1` against expanded tile hosts | `-a 3` on live hosts | `http://ip` brief log | `COVEY_WHATWEB` |
 | `httpx` | `httpx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**6th e2e-proven**) | title/status/tech on live hosts | `http(s)://ip` lines | `COVEY_HTTPX` |
 | `tlsx` | `tlsx` | `-silent -l` tile hosts file | `-san -cn -so` on live hosts | `ip:443` TLS lines | `COVEY_TLSX` |
@@ -46,7 +47,15 @@ forbidden.
   broadcast (`ping -b`) so replies can name hosts; pass2 deepens the first
   live host.
 - **sslscan**: one target per process. pass1 is the first usable host of the
-  already-tiled CIDR (Covey tiles; a `/30` is two hosts).
+  already-tiled CIDR (Covey tiles; a `/30` is two hosts) as
+  `host:<SCOPE port>` (default `443`). Seventh e2e-proven adapter
+  (`python -m covey prove --adapter sslscan` / `make prove-sslscan`).
+  Prove serves TLS on the same loopback addresses rustscan / naabu /
+  nping / httpx bind. Bare TCP accept and plain HTTP are not enough:
+  sslscan prints `Connected to` only after a TLS handshake. Parse
+  requires `Connected to` / XML `ssltest host`; connection-refused
+  `ERROR` lines name the IP but are not live hosts. Pass1 uses SCOPE
+  `pass2.ports` (lab default `18080`).
 - **onesixtyone** / **httpx** / **tlsx**: the runner writes `{out_prefix}.hosts`
   (and `.comm` for onesixtyone) next to artifacts before spawn. argv still
   invokes only that tool.
@@ -80,7 +89,7 @@ forbidden.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
-  (zmap, nping, hping3) use the first listed port.
+  (zmap, nping, hping3, sslscan) use the first listed port.
 
 ## Resolution
 

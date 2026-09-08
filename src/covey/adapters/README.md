@@ -96,10 +96,21 @@ download the official GitHub release onto **this VM only**.
 
 `python -m covey prove --adapter httpx`
 
+## sslscan (seventh e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_SSLSCAN`, or the prove path may
+`apt-get install sslscan` onto **this VM only**.
+
+- pass1: `--xml --no-colour` first usable tile host as `host:<SCOPE port>`
+- pass2: `--show-certificate` first pass1-live host
+- prove serves TLS (TLS handshake ≠ HTTP 200 ≠ bare TCP accept)
+
+`python -m covey prove --adapter sslscan`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
+hping3, ike-scan, nbtscan, onesixtyone, braa, svmap,
 whatweb, tlsx — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
