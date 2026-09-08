@@ -1,0 +1,27 @@
+# Evergreen Covey — signed demo SCOPE for the httpx loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. httpx is an HTTP probe, so prove serves HTTP/1.1 200
+# on 18080 on the first usable host of each /30. Bare TCP accept is
+# not enough — httpx prints nothing unless the peer speaks HTTP.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey httpx loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: httpx
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: e0a75a5c927855ae212269eb1c9dcd5608715370b9d0e62aa79d0e2ade408c42
