@@ -34,7 +34,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
 markers = [
   "integration: end-to-end prove that invokes BYO nmap, rustscan, fping, naabu, nping, httpx, or sslscan through the Covey runner",
 ]
