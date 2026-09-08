@@ -11,7 +11,7 @@ from covey import __version__
 from covey.errors import CoveyError
 from covey.plan import build_plan
 from covey.prove import run_prove
-from covey.runner import resolve_nmap, run_plan
+from covey.runner import resolve_exec, run_plan
 from covey.scope import load, sign_file
 
 
@@ -33,7 +33,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     (out_root / "plan.json").write_text(
         json.dumps(plan.to_dict(), indent=2) + "\n", encoding="utf-8"
     )
-    spec = resolve_nmap()
+    spec = resolve_exec(plan.adapter)
     report = run_plan(plan, out_root=out_root, spec=spec)
     print(f"run {'ok' if report.ok else 'failed'} via {report.exec}")
     print(f"  pass1 live hosts: {', '.join(report.all_pass1_hosts()) or '(none)'}")
@@ -77,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--out-root", default="out", help="artifact root baked into argv paths")
     plan.set_defaults(func=_cmd_plan)
 
-    run = sub.add_parser("run", help="execute a plan (requires BYO nmap)")
+    run = sub.add_parser("run", help="execute a plan (requires the SCOPE adapter binary)")
     run.add_argument("--scope", required=True, help="signed SCOPE YAML")
     run.add_argument("--out", default="out")
     run.set_defaults(func=_cmd_run)

@@ -4,7 +4,11 @@ SCOPE-gated Lego for **sharded BYO scanner workers**. Covey plans tiles,
 fans out a small worker pool, lands artifacts, and optionally deepens only
 the hosts that answered. It does not ship a scanner.
 
-First proven adapter: **Nmap**, provided by the operator.
+Twenty live BYO adapters (nmap, masscan, rustscan, naabu, fping, arp-scan,
+netdiscover, zmap, unicornscan, nping, hping3, ike-scan, nbtscan,
+onesixtyone, braa, svmap, sslscan, whatweb, httpx, tlsx). The operator
+provides the binary. **Nmap** is the proven end-to-end path (`make prove`).
+See [ADAPTERS.md](ADAPTERS.md).
 
 ```
 discover shards → land XML/gnmap → optional pass2 on live hosts
@@ -44,13 +48,16 @@ The committed lab SCOPE tiles loopback `127.0.0.0/28` into four `/30`s,
 runs pass1 (`nmap -sn`) with `max_workers: 2`, then pass2 (`nmap -sV`)
 only against hosts that pass1 marked up. Artifacts land in `out/shards/`.
 
-## BYO Nmap
+## BYO scanners
 
-Resolve order:
+SCOPE `adapter:` selects one of the 20 live ids. Resolve order:
 
-1. `COVEY_NMAP` — absolute path, `nmap`, or `docker://<image>`
-2. `nmap` on `PATH`
-3. `COVEY_NMAP_IMAGE` / `docker://instrumentisto/nmap` if Docker is present
+1. `COVEY_<TOOL>` — absolute path, binary name, or `docker://<image>`
+   (`COVEY_NMAP`, `COVEY_ARP_SCAN`, …)
+2. `COVEY_BIN` — same shapes, any adapter
+3. the tool name on `PATH`
+4. `COVEY_<TOOL>_IMAGE` if set (Docker required)
+5. **nmap only**: `COVEY_NMAP_IMAGE` / `docker://instrumentisto/nmap` if Docker is present
 
 ```bash
 export COVEY_NMAP=/usr/bin/nmap
@@ -78,7 +85,7 @@ consent:
 window:
   start: "2026-01-01T00:00:00Z"
   end: "2029-12-31T23:59:59Z"
-adapter: nmap
+adapter: nmap            # one of the 20 live ids; see ADAPTERS.md
 max_workers: 2          # cap 1–4; default 2
 allow_wide: false
 tile:
@@ -120,7 +127,7 @@ python -m covey prove
 ```
 
 `plan` writes worker JSON (shard id, target, stage, argv / argv template)
-and does **not** invoke Nmap.
+and does **not** invoke a scanner.
 
 ## Layout
 
@@ -130,9 +137,9 @@ and does **not** invoke Nmap.
 | `covey.shard` | expand allowed CIDRs into tiles (pure) |
 | `covey.plan` | worker plan JSON, no spawn |
 | `covey.runner` | local subprocess or `docker run`; land stdout/stderr/xml |
-| `covey.adapters.nmap` | pass1 `-sn`, pass2 `-sV` on pass1-live hosts only |
+| `covey.adapters` | 20 live BYO argv+parse adapters + OpenVAS file_drop stub |
 
-Later BYO tools reuse the same shard/stage kit. See
+See [`ADAPTERS.md`](ADAPTERS.md) and
 [`src/covey/adapters/README.md`](src/covey/adapters/README.md).
 
 ## Tests

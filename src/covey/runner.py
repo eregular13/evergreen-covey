@@ -11,13 +11,15 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from covey.adapters import BINARY_ALIASES, adapter_for, tool_env_var
 from covey.adapters.base import Adapter, materialize_template
-from covey.adapters.nmap import NmapAdapter
 from covey.errors import RunnerError
 from covey.plan import Plan, Worker
 
 NMAP_ENV = "COVEY_NMAP"
 NMAP_IMAGE_ENV = "COVEY_NMAP_IMAGE"
+BIN_ENV = "COVEY_BIN"
+ENTRYPOINT_ENV = "COVEY_ENTRYPOINT"
 DEFAULT_DOCKER_IMAGE = "instrumentisto/nmap"
 DEFAULT_TIMEOUT_SEC = 120
 
@@ -25,19 +27,30 @@ DEFAULT_TIMEOUT_SEC = 120
 @dataclass
 class ExecSpec:
     kind: str  # "local" | "docker"
-    nmap: str  # binary path/name or image
-    display: str
+    binary: str = ""  # local path/name or docker image
+    display: str = ""
+    entrypoint: str = ""
+    nmap: str = ""  # backward-compat alias of binary
+
+    def __post_init__(self) -> None:
+        if not self.binary and self.nmap:
+            self.binary = self.nmap
+        elif not self.nmap and self.binary:
+            self.nmap = self.binary
+        if not self.entrypoint:
+            raw = Path(self.binary).name if self.binary else "nmap"
+            self.entrypoint = raw.split(":")[0] or "nmap"
 
     def wrap(self, argv: list[str], *, cwd: Path) -> list[str]:
         if not argv:
             raise RunnerError("empty argv")
         if self.kind == "local":
             wrapped = list(argv)
-            wrapped[0] = self.nmap
+            wrapped[0] = self.binary
             return wrapped
         if self.kind == "docker":
-            # Force entrypoint so images that already wrap nmap stay predictable.
-            rest = argv[1:] if argv[0] == "nmap" else argv
+            # Force entrypoint so images that already wrap the tool stay predictable.
+            rest = argv[1:] if argv[0] == self.entrypoint else argv
             return [
                 "docker",
                 "run",
@@ -49,8 +62,8 @@ class ExecSpec:
                 "-w",
                 "/work",
                 "--entrypoint",
-                "nmap",
-                self.nmap,
+                self.entrypoint,
+                self.binary,
                 *rest,
             ]
         raise RunnerError(f"unknown exec kind {self.kind}")
@@ -118,47 +131,103 @@ def _strip_docker_prefix(value: str) -> str:
     return value
 
 
-def resolve_nmap(*, allow_missing: bool = False) -> ExecSpec:
-    explicit = os.environ.get(NMAP_ENV, "").strip()
-    if explicit:
-        if _looks_like_docker_ref(explicit):
-            image = _strip_docker_prefix(explicit).strip()
-            if not image:
-                raise RunnerError(f"{NMAP_ENV} docker ref is empty")
-            if not shutil.which("docker"):
-                raise RunnerError("COVEY_NMAP is a docker ref but docker is not on PATH")
-            return ExecSpec(kind="docker", nmap=image, display=f"docker://{image}")
-        path = Path(explicit)
-        if path.is_file():
-            return ExecSpec(kind="local", nmap=str(path), display=str(path))
-        found = shutil.which(explicit)
-        if found:
-            return ExecSpec(kind="local", nmap=found, display=found)
-        raise RunnerError(f"{NMAP_ENV}={explicit!r} is not an executable or docker ref")
-
-    found = shutil.which("nmap")
-    if found:
-        return ExecSpec(kind="local", nmap=found, display=found)
-
-    image = os.environ.get(NMAP_IMAGE_ENV, "").strip()
+def _entrypoint_for(tool: str, *, image: str = "") -> str:
+    specific = os.environ.get(f"{tool_env_var(tool)}_ENTRYPOINT", "").strip()
+    generic = os.environ.get(ENTRYPOINT_ENV, "").strip()
+    if specific:
+        return specific
+    if generic:
+        return generic
     if image:
-        if not shutil.which("docker"):
-            raise RunnerError(f"{NMAP_IMAGE_ENV} set but docker is not on PATH")
-        return ExecSpec(kind="docker", nmap=image, display=f"docker://{image}")
+        name = Path(image).name.split(":")[0]
+        if name:
+            return name
+    return tool
 
-    if shutil.which("docker"):
+
+def _which_tool(tool: str) -> str | None:
+    for candidate in BINARY_ALIASES.get(tool, (tool,)):
+        found = shutil.which(candidate)
+        if found:
+            return found
+    return None
+
+
+def _spec_from_explicit(tool: str, explicit: str, *, env_name: str) -> ExecSpec:
+    if _looks_like_docker_ref(explicit):
+        image = _strip_docker_prefix(explicit).strip()
+        if not image:
+            raise RunnerError(f"{env_name} docker ref is empty")
+        if not shutil.which("docker"):
+            raise RunnerError(f"{env_name} is a docker ref but docker is not on PATH")
         return ExecSpec(
             kind="docker",
-            nmap=DEFAULT_DOCKER_IMAGE,
+            binary=image,
+            display=f"docker://{image}",
+            entrypoint=_entrypoint_for(tool, image=image),
+        )
+    path = Path(explicit)
+    if path.is_file():
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint=tool,
+        )
+    found = shutil.which(explicit)
+    if found:
+        return ExecSpec(kind="local", binary=found, display=found, entrypoint=tool)
+    raise RunnerError(f"{env_name}={explicit!r} is not an executable or docker ref")
+
+
+def resolve_exec(tool: str = "nmap", *, allow_missing: bool = False) -> ExecSpec:
+    """Resolve a BYO binary: COVEY_<TOOL>, COVEY_BIN, PATH, optional docker://."""
+    name = (tool or "nmap").strip().lower() or "nmap"
+    env_name = tool_env_var(name)
+    explicit = os.environ.get(env_name, "").strip()
+    if explicit:
+        return _spec_from_explicit(name, explicit, env_name=env_name)
+
+    generic = os.environ.get(BIN_ENV, "").strip()
+    if generic:
+        return _spec_from_explicit(name, generic, env_name=BIN_ENV)
+
+    found = _which_tool(name)
+    if found:
+        return ExecSpec(kind="local", binary=found, display=found, entrypoint=name)
+
+    image_env = f"{env_name}_IMAGE"
+    image = os.environ.get(image_env, "").strip()
+    if not image and name == "nmap":
+        image = os.environ.get(NMAP_IMAGE_ENV, "").strip()
+    if image:
+        if not shutil.which("docker"):
+            raise RunnerError(f"{image_env} set but docker is not on PATH")
+        return ExecSpec(
+            kind="docker",
+            binary=image,
+            display=f"docker://{image}",
+            entrypoint=_entrypoint_for(name, image=image),
+        )
+
+    if name == "nmap" and shutil.which("docker"):
+        return ExecSpec(
+            kind="docker",
+            binary=DEFAULT_DOCKER_IMAGE,
             display=f"docker://{DEFAULT_DOCKER_IMAGE}",
+            entrypoint="nmap",
         )
 
     if allow_missing:
-        raise RunnerError("nmap not found")
+        raise RunnerError(f"{name} not found")
     raise RunnerError(
-        "nmap not found on PATH. This is BYO: install nmap, set COVEY_NMAP, "
-        "or point COVEY_NMAP at docker://<image-that-has-nmap>"
+        f"{name} not found on PATH. This is BYO: install {name}, set {env_name} "
+        f"or {BIN_ENV}, or point {env_name} at docker://<image-that-has-{name}>"
     )
+
+
+def resolve_nmap(*, allow_missing: bool = False) -> ExecSpec:
+    return resolve_exec("nmap", allow_missing=allow_missing)
 
 
 def ensure_nmap(*, install_if_missing: bool = False) -> ExecSpec:
@@ -188,11 +257,35 @@ def ensure_nmap(*, install_if_missing: bool = False) -> ExecSpec:
     found = shutil.which("nmap")
     if not found:
         raise RunnerError("nmap installed but still not on PATH")
-    return ExecSpec(kind="local", nmap=found, display=found)
+    return ExecSpec(kind="local", binary=found, display=found, entrypoint="nmap")
 
 
 def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
+
+
+def _scan_prefix(worker_id: str) -> str:
+    return str(Path("shards") / worker_id / "scan")
+
+
+def _write_stage_files(
+    adapter: Adapter,
+    worker: Worker,
+    *,
+    cwd: Path,
+) -> None:
+    prepare = getattr(adapter, "stage_files", None)
+    if prepare is None:
+        return
+    files = prepare(worker.stage, worker.target, _scan_prefix(worker.id))
+    if not files:
+        return
+    for rel, content in files.items():
+        dest = Path(rel)
+        if not dest.is_absolute():
+            dest = cwd / dest
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content, encoding="utf-8")
 
 
 def _run_one(
@@ -207,6 +300,7 @@ def _run_one(
         raise RunnerError(f"worker {worker.id} has no concrete argv")
     artifact_dir = cwd / "shards" / worker.id
     artifact_dir.mkdir(parents=True, exist_ok=True)
+    _write_stage_files(adapter, worker, cwd=cwd)
     executed = spec.wrap(worker.argv, cwd=cwd)
     _write_text(artifact_dir / "argv.json", json.dumps(executed, indent=2) + "\n")
     _write_text(artifact_dir / "target.txt", worker.target + "\n")
@@ -284,6 +378,32 @@ def _run_stage(
     return results
 
 
+def _out_prefix_from_template(template: list[str]) -> str:
+    for flag in ("-oA", "-oJ", "-oX", "-oL", "-oG", "-oN", "-o"):
+        if flag in template:
+            idx = template.index(flag)
+            if idx + 1 < len(template):
+                return _strip_out_suffix(template[idx + 1])
+    for token in template:
+        for prefix in (
+            "--xml=",
+            "--log-brief=",
+            "--output=",
+            "--output-file=",
+        ):
+            if token.startswith(prefix):
+                return _strip_out_suffix(token[len(prefix) :])
+    return "scan"
+
+
+def _strip_out_suffix(path: str) -> str:
+    text = path
+    for suffix in (".json", ".xml", ".txt", ".gnmap", ".nmap", ".list"):
+        if text.endswith(suffix):
+            return text[: -len(suffix)]
+    return text
+
+
 def _materialize_pass2(
     plan: Plan,
     pass1: list[WorkerResult],
@@ -293,14 +413,15 @@ def _materialize_pass2(
     ready: list[Worker] = []
     for worker in plan.pass2_workers:
         hosts = [h for h in live_by_shard.get(worker.shard_id, []) if h]
-        template = worker.argv_template or []
         if not hosts:
             continue
-        argv = (
-            adapter.pass2_argv(hosts, _out_prefix_from_template(template))
-            if not template
-            else materialize_template(template, hosts)
-        )
+        template = worker.argv_template or []
+        prefix = _out_prefix_from_template(template)
+        if prefix == "scan":
+            prefix = _scan_prefix(worker.id)
+        argv = adapter.pass2_argv(hosts, prefix)
+        if not argv and template:
+            argv = materialize_template(template, hosts)
         ready.append(
             Worker(
                 id=worker.id,
@@ -313,14 +434,6 @@ def _materialize_pass2(
     return ready
 
 
-def _out_prefix_from_template(template: list[str]) -> str:
-    if "-oA" in template:
-        idx = template.index("-oA")
-        if idx + 1 < len(template):
-            return template[idx + 1]
-    return "scan"
-
-
 def run_plan(
     plan: Plan,
     *,
@@ -331,8 +444,8 @@ def run_plan(
 ) -> RunReport:
     cwd = Path(out_root)
     cwd.mkdir(parents=True, exist_ok=True)
-    plugin = adapter or NmapAdapter()
-    resolved = spec or resolve_nmap()
+    plugin = adapter or adapter_for(plan.adapter)
+    resolved = spec or resolve_exec(plugin.name)
     max_workers = max(1, min(plan.max_workers, 4))
 
     pass1 = _run_stage(

@@ -17,9 +17,11 @@ into the tree, or commit:
 - PingCastle
 - RiskReady wrappers
 
-Operators bring their own scanner. Covey resolves Nmap from `PATH`,
-`COVEY_NMAP`, or a user-supplied container image name. The prove path may
-install Nmap **on the local prove VM only**; that binary is not part of git.
+Operators bring their own scanner. Covey resolves the selected adapter
+binary from `PATH`, `COVEY_<TOOL>`, `COVEY_BIN`, or a user-supplied
+`docker://` image. The prove path may install Nmap **on the local prove
+VM only**; that binary is not part of git. Other live adapters are
+argv+parser only — never vendored, never apt-installed into the tree.
 
 ## OpenVAS-class tools
 

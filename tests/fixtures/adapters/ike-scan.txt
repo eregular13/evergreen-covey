@@ -1,0 +1,4 @@
+Starting ike-scan 1.9
+10.9.8.7	Main Mode Handshake returned (HDR: (CKY-I=...))
+10.9.8.8	Main Mode Handshake returned (HDR: (CKY-I=...))
+Ending ike-scan 1.9: 4 hosts scanned

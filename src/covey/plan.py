@@ -8,21 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from covey.adapters.base import Adapter
-from covey.adapters.nmap import NmapAdapter
+from covey.adapters.registry import adapter_for
 from covey.errors import AdapterError, ShardError
 from covey.scope import Scope
 from covey.shard import expand_network, parse_v4_network
-
-
-def adapter_for(name: str) -> Adapter:
-    key = (name or "nmap").strip().lower()
-    if key == "nmap":
-        return NmapAdapter()
-    if key in {"openvas", "greenbone", "gvm"}:
-        raise AdapterError(
-            f"{name} is file_drop only — Covey will not build a live spawn plan"
-        )
-    raise AdapterError(f"unknown adapter {name!r}")
 
 
 @dataclass

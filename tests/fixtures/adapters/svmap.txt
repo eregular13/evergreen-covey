@@ -1,0 +1,2 @@
+| SIP Device | 10.9.8.7 | port 5060 | ready |
+| SIP Device | 10.9.8.8 | port 5060 | ready |

@@ -5,12 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "evergreen-covey"
 version = "0.1.0"
-description = "SCOPE-gated Lego for sharded BYO scanner workers. First adapter: Nmap (operator-provided)."
+description = "SCOPE-gated Lego for sharded BYO scanner workers. 20 live adapters; nmap is the proven path."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Evergreen Covey" }]
-keywords = ["evergreen", "covey", "scope", "nmap", "orchestration", "byo"]
+keywords = ["evergreen", "covey", "scope", "nmap", "orchestration", "byo", "adapters"]
 dependencies = [
   "pyyaml>=6.0",
 ]
