@@ -653,6 +653,37 @@ def ensure_sslscan(*, install_if_missing: bool = False) -> ExecSpec:
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="sslscan")
 
 
+def ensure_whatweb(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO whatweb. Optionally apt-install onto this VM only."""
+    try:
+        return resolve_exec("whatweb")
+    except RunnerError:
+        if not install_if_missing:
+            raise
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install whatweb: apt-get not available")
+    update = subprocess.run(
+        ["sudo", "apt-get", "update"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if update.returncode != 0:
+        raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+    install = subprocess.run(
+        ["sudo", "apt-get", "install", "-y", "whatweb"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        raise RunnerError(f"apt-get install whatweb failed: {install.stderr[-400:]}")
+    found = shutil.which("whatweb")
+    if not found:
+        raise RunnerError("whatweb installed but still not on PATH")
+    return ExecSpec(kind="local", binary=found, display=found, entrypoint="whatweb")
+
+
 def _install_tlsx_release() -> Path:
     """Download the official tlsx release onto this VM. Never into git."""
     machine = platform.machine().lower()

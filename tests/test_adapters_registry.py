@@ -35,12 +35,13 @@ def test_registry_lists_exactly_20_live_ids():
         "httpx",
         "sslscan",
         "tlsx",
+        "whatweb",
     )
     assert all(name in ids for name in E2E_PROVEN_ADAPTERS)
     assert UNPROVEN_ADAPTERS == tuple(
         name for name in ids if name not in E2E_PROVEN_ADAPTERS
     )
-    assert len(UNPROVEN_ADAPTERS) == 12
+    assert len(UNPROVEN_ADAPTERS) == 11
 
 
 @pytest.mark.parametrize("name", LIVE_ADAPTER_IDS)

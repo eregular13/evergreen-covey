@@ -5,15 +5,15 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
-(fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth).** The
-other 12 ids are argv+unit only. Source of truth: `E2E_PROVEN_ADAPTERS`
-in `src/covey/adapters/registry.py`. See [PROVE.md](PROVE.md). Do not claim
-them live.
+(fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
+`whatweb` (ninth).** The other 11 ids are argv+unit only. Source of
+truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
+[PROVE.md](PROVE.md). Do not claim them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
-(GitHub release / go), sslscan (apt), or tlsx (GitHub release / go)
-**on that machine only** — never into git.
+(GitHub release / go), sslscan (apt), tlsx (GitHub release / go), or
+whatweb (apt) **on that machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -39,7 +39,7 @@ forbidden.
 | `braa` | `braa` | `public@first-last:sysDescr` | sysDescr + sysName per host | `ip:oid:value` | `COVEY_BRAA` |
 | `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
 | `sslscan` | `sslscan` | TLS probe of the **first usable tile host** as `host:<SCOPE port>` (**7th e2e-proven**) | `--show-certificate` first live host | `Connected to` / XML host (not refused `ERROR`) | `COVEY_SSLSCAN` |
-| `whatweb` | `whatweb` | `-a 1` against expanded tile hosts | `-a 3` on live hosts | `http://ip` brief log | `COVEY_WHATWEB` |
+| `whatweb` | `whatweb` | `-a 1` `http://host:<SCOPE port>` tile hosts (**9th e2e-proven**) | `-a 3` on live host URLs | `http://ip` brief log (not banner `IP[]`) | `COVEY_WHATWEB` |
 | `httpx` | `httpx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**6th e2e-proven**) | title/status/tech on live hosts | `http(s)://ip` lines | `COVEY_HTTPX` |
 | `tlsx` | `tlsx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**8th e2e-proven**) | `-san -cn` on live hosts | `ip:port` TLS lines | `COVEY_TLSX` |
 
@@ -95,10 +95,18 @@ forbidden.
   plain HTTP are not enough: tlsx prints `ip:port` only after a TLS
   handshake. Pass1 uses SCOPE `pass2.ports` (lab default `18080`).
   Parse requires leading `ip:port` lines; banner/SAN IPs are ignored.
+- **whatweb**: HTTP fingerprint, not a TCP connect scan. Ninth e2e-proven
+  adapter (`python -m covey prove --adapter whatweb` /
+  `make prove-whatweb`). Prove serves HTTP/1.1 200 on the same loopback
+  addresses rustscan / naabu / nping / httpx bind. Bare TCP accept is
+  not enough: whatweb prints `http://ip` only after an HTTP reply.
+  Pass1 uses SCOPE `pass2.ports` (lab default `18080`) as
+  `http://host:<port>`. Parse requires leading `http(s)://ip` brief-log
+  lines; plugin/banner IPs are ignored.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
-  (zmap, nping, hping3, sslscan) use the first listed port.
+  (zmap, nping, hping3, sslscan, whatweb) use the first listed port.
 
 ## Resolution
 

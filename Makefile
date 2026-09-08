@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -70,6 +70,12 @@ prove-sslscan: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-tlsx: venv
 	$(PY) -m covey prove --adapter tlsx --out out/tlsx
+
+# Ninth e2e-proven adapter. BYO whatweb (apt on this VM only).
+# Needs an HTTP 200 lab, not a bare TCP accept.
+# Does not replace `make prove` (nmap stays the default).
+prove-whatweb: venv
+	$(PY) -m covey prove --adapter whatweb --out out/whatweb
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

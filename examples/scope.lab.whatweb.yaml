@@ -1,0 +1,27 @@
+# Evergreen Covey — signed demo SCOPE for the whatweb loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. whatweb is an HTTP fingerprint, so prove serves
+# HTTP/1.1 200 on 18080 on the first usable host of each /30. Bare TCP
+# accept is not enough — whatweb prints http://ip only after an HTTP reply.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey whatweb loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: whatweb
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: a04774f27d32cb03bf37567a7fcf14080a02f62941c2a7b2dd3f7e391e703cbb

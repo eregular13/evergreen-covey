@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, or tlsx; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, or whatweb; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from covey.runner import (
     ensure_rustscan,
     ensure_sslscan,
     ensure_tlsx,
+    ensure_whatweb,
     run_plan,
 )
 from covey.scope import load
@@ -39,6 +40,7 @@ NPING_LAB_SCOPE = Path("examples/scope.lab.nping.yaml")
 HTTPX_LAB_SCOPE = Path("examples/scope.lab.httpx.yaml")
 SSLSCAN_LAB_SCOPE = Path("examples/scope.lab.sslscan.yaml")
 TLSX_LAB_SCOPE = Path("examples/scope.lab.tlsx.yaml")
+WHATWEB_LAB_SCOPE = Path("examples/scope.lab.whatweb.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -48,6 +50,7 @@ LAB_SCOPES = {
     "httpx": HTTPX_LAB_SCOPE,
     "sslscan": SSLSCAN_LAB_SCOPE,
     "tlsx": TLSX_LAB_SCOPE,
+    "whatweb": WHATWEB_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -66,6 +69,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "httpx",
         "sslscan",
         "tlsx",
+        "whatweb",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -154,8 +158,8 @@ def loopback_lab_listeners(
 
     rustscan, naabu, and nping --tcp-connect are TCP probes (unlike nmap
     ``-sn``). Without a listener, pass1 finds no live hosts and prove fails
-    closed. This is lab fixture, not a forged scanner result. httpx needs
-    ``loopback_http_lab`` (HTTP 200). sslscan and tlsx need
+    closed. This is lab fixture, not a forged scanner result. httpx and
+    whatweb need ``loopback_http_lab`` (HTTP 200). sslscan and tlsx need
     ``loopback_tls_lab`` (a TLS handshake). Neither is this bare accept.
     """
     sockets: list[socket.socket] = []
@@ -226,10 +230,10 @@ def loopback_http_lab(
     hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
     port: int = RUSTSCAN_LAB_PORT,
 ) -> Iterator[tuple[str, int]]:
-    """Serve HTTP/1.1 200 on loopback tiles so httpx can observe live URLs.
+    """Serve HTTP/1.1 200 on loopback tiles so httpx/whatweb can observe live URLs.
 
-    Bare TCP accept is not enough: httpx prints nothing unless the peer
-    speaks HTTP. This is lab fixture, not a forged scanner result.
+    Bare TCP accept is not enough: httpx and whatweb print nothing unless
+    the peer speaks HTTP. This is lab fixture, not a forged scanner result.
     """
     servers: list[ThreadingHTTPServer] = []
     try:
@@ -238,7 +242,7 @@ def loopback_http_lab(
                 server = ThreadingHTTPServer((host, port), _LabHTTPHandler)
             except OSError as exc:
                 raise RunnerError(
-                    f"httpx lab cannot bind HTTP {host}:{port}: {exc}"
+                    f"HTTP lab cannot bind HTTP {host}:{port}: {exc}"
                 ) from exc
             server.daemon_threads = True
             threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -349,6 +353,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_sslscan(install_if_missing=install_if_missing)
     if name == "tlsx":
         return ensure_tlsx(install_if_missing=install_if_missing)
+    if name == "whatweb":
+        return ensure_whatweb(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -401,7 +407,7 @@ def run_prove(
         assert_report(plan, report, out, adapter_name=plugin.name)
         return report
 
-    if plugin.name == "httpx":
+    if plugin.name in {"httpx", "whatweb"}:
         with loopback_http_lab(port=_lab_port(scope)):
             report = _execute()
     elif plugin.name in {"sslscan", "tlsx"}:
