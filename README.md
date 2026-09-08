@@ -7,8 +7,10 @@ the hosts that answered. It does not ship a scanner.
 Twenty live BYO adapters (nmap, masscan, rustscan, naabu, fping, arp-scan,
 netdiscover, zmap, unicornscan, nping, hping3, ike-scan, nbtscan,
 onesixtyone, braa, svmap, sslscan, whatweb, httpx, tlsx). The operator
-provides the binary. **Nmap** is the proven end-to-end path (`make prove`).
-See [ADAPTERS.md](ADAPTERS.md).
+provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
+**rustscan** is the second (`python -m covey prove --adapter rustscan`).
+The other 18 remain argv+unit only — do not claim them live. See
+[ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
 ```
 discover shards → land XML/gnmap → optional pass2 on live hosts
@@ -44,9 +46,13 @@ python3 -m venv .venv
 On Debian/Ubuntu, `python3.12-venv` is required for the virtualenv. `make prove`
 will apt-install that package if `python3 -m venv` fails.
 
-The committed lab SCOPE tiles loopback `127.0.0.0/28` into four `/30`s,
+The committed nmap lab SCOPE tiles loopback `127.0.0.0/28` into four `/30`s,
 runs pass1 (`nmap -sn`) with `max_workers: 2`, then pass2 (`nmap -sV`)
 only against hosts that pass1 marked up. Artifacts land in `out/shards/`.
+
+rustscan uses the same tile honesty (`examples/scope.lab.rustscan.yaml`,
+`adapter: rustscan`, SCOPE ports `18080`) plus a loopback lab listener —
+rustscan is a port scanner, not a ping sweep. See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
@@ -131,6 +137,7 @@ or run.
 python -m covey plan --scope examples/scope.lab.yaml --out out/plan.json
 python -m covey run  --scope examples/scope.lab.yaml --out out
 python -m covey prove
+python -m covey prove --adapter rustscan
 python -m covey export --out out
 # or
 make export

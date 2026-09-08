@@ -1,8 +1,14 @@
 # Evergreen Covey — live BYO adapters
 
 Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
-`COVEY_BIN`, or `docker://<image>`). Nothing in this table is vendored, and
-the prove VM may install **nmap only** — never into git.
+`COVEY_BIN`, or `docker://<image>`). Nothing in this table is vendored.
+
+**E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
+`rustscan` (second).** The other 18 ids are argv+unit only. See
+[PROVE.md](PROVE.md). Do not claim them live.
+
+The prove VM may install nmap (apt) or rustscan (GitHub release / cargo)
+**on that machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -13,7 +19,7 @@ forbidden.
 | --- | --- | --- | --- | --- | --- |
 | `nmap` | `nmap` | `-sn` ping/discover on the tile | `-sV` on pass1-live hosts only; ports from SCOPE `pass2.ports` (else `22`) | XML `status=up` / gnmap `Status: Up` | `COVEY_NMAP` |
 | `masscan` | `masscan` | `-p80,443` JSON on the CIDR | extra ports on live hosts | masscan `-oJ` `ip` + open ports | `COVEY_MASSCAN` |
-| `rustscan` | `rustscan` | `-a <cidr> -g` (no nmap `--`) | `-a <hosts> -p 22,80,443,…` | `Open a.b.c.d:port` / greppable | `COVEY_RUSTSCAN` |
+| `rustscan` | `rustscan` | `-a <cidr> -g -p <SCOPE ports>` (no nmap `--`; **2nd e2e-proven**) | `-a <hosts> -p <SCOPE ports>` rustscan-only | `ip -> [ports]` / `Open a.b.c.d:port` | `COVEY_RUSTSCAN` |
 | `naabu` | `naabu` | `-host <cidr> -top-ports 100` | `-host <hosts> -p 22,80,443,…` | `ip:port` lines | `COVEY_NAABU` |
 | `fping` | `fping` | `-aqg <net> <broadcast>` | `-a -c 3` live hosts | alive IPs on stdout | `COVEY_FPING` |
 | `arp-scan` | `arp-scan` | CIDR local ARP sweep | retry/timeout deepen on hosts | first-column IPv4 + MAC | `COVEY_ARP_SCAN` |
@@ -45,6 +51,9 @@ forbidden.
 - **zmap**: `-B /dev/null` turns off the default public blocklist so a
   SCOPE-approved RFC1918 tile is reachable. SCOPE spray rules are unchanged.
 - **rustscan**: never appends `--` nmap flags. Deepen stays rustscan-only.
+  Second e2e-proven adapter (`python -m covey prove --adapter rustscan`).
+  Pass1 uses SCOPE `pass2.ports` (lab default `18080`) so the loopback
+  prove is a tiny port list, not a 65535-port spray.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools

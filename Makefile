@@ -1,4 +1,4 @@
-.PHONY: prove test unit venv export clean
+.PHONY: prove prove-rustscan test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -31,6 +31,11 @@ prove: venv
 	$(PY) -m covey prove
 	$(PY) -m covey export --out out
 	$(PY) -m pytest -q
+
+# Second e2e-proven adapter. BYO rustscan (GitHub release on this VM only).
+# Does not replace `make prove` (nmap stays the default).
+prove-rustscan: venv
+	$(PY) -m covey prove --adapter rustscan --out out/rustscan
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info
