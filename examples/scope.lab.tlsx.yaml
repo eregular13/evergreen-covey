@@ -1,0 +1,27 @@
+# Evergreen Covey — signed demo SCOPE for the tlsx loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. tlsx is a TLS probe, so prove serves TLS on 18080
+# on the first usable host of each /30. HTTP 200 and bare TCP accept
+# are not enough — tlsx prints ip:port only after a handshake.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey tlsx loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: tlsx
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: 586c4e7a423911d53e083f587a9e7b3f2f4c170565a1eb3fb978fb6ec7e74738

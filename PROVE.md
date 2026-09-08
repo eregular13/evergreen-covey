@@ -1,6 +1,6 @@
 # Evergreen Covey — prove honesty
 
-Covey has **20** live adapter ids (argv + unit parse). Only **seven** have
+Covey has **20** live adapter ids (argv + unit parse). Only **eight** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.
 
@@ -13,17 +13,18 @@ binary against a signed loopback lab.
 | 5 | `nping` | `python -m covey prove --adapter nping` / `make prove-nping` | `out/shards/*/stdout.log` + `argv.json` |
 | 6 | `httpx` | `python -m covey prove --adapter httpx` / `make prove-httpx` | `out/shards/*/stdout.log` + `argv.json` |
 | 7 | `sslscan` | `python -m covey prove --adapter sslscan` / `make prove-sslscan` | `out/shards/*/stdout.log` + `argv.json` |
+| 8 | `tlsx` | `python -m covey prove --adapter tlsx` / `make prove-tlsx` | `out/shards/*/stdout.log` + `argv.json` |
 
-The other **13** (`masscan`, `arp-scan`, `netdiscover`,
+The other **12** (`masscan`, `arp-scan`, `netdiscover`,
 `zmap`, `unicornscan`, `hping3`, `ike-scan`, `nbtscan`,
-`onesixtyone`, `braa`, `svmap`, `whatweb`, `tlsx`)
+`onesixtyone`, `braa`, `svmap`, `whatweb`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
 Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
-(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`). `UNPROVEN_ADAPTERS` is the derived remainder.
-Adding an eighth live e2e requires a real BYO prove — not a docs edit.
+(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`). `UNPROVEN_ADAPTERS` is the derived remainder.
+Adding a ninth live e2e requires a real BYO prove — not a docs edit.
 
-`python -m covey prove --adapter masscan` (or any of the 13, with or
+`python -m covey prove --adapter masscan` (or any of the 12, with or
 without `--no-install`) **fails closed**.
 
 masscan was preferred earlier. `apt-get install masscan` resolves
@@ -37,11 +38,15 @@ nping raw `--icmp` / `--tcp` need root. The fifth brick is unprivileged
 naabu use. The sixth brick is **httpx**: it needs an HTTP 200, not a
 bare TCP accept. Prove serves HTTP/1.1 200 on the loopback tiles. The
 seventh brick is **sslscan**: it needs a TLS handshake, not HTTP or a
-bare TCP accept. Prove serves TLS on the loopback tiles.
+bare TCP accept. Prove serves TLS on the loopback tiles. The eighth
+brick is **tlsx**: same TLS handshake requirement as sslscan. Prove
+reuses that TLS lab. whatweb stays argv+unit this cycle (one brick
+only). arp-scan stays argv+unit (no L2 BYO). masscan stays argv+unit
+until a non-loopback raw-SYN prove.
 
 ## Lab SCOPE
 
-All seven proven paths tile loopback `127.0.0.0/28` into four `/30`s with
+All eight proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 `max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
@@ -53,6 +58,7 @@ All seven proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | nping | `examples/scope.lab.nping.yaml` | `nping --tcp-connect -p 18080` on expanded tile hosts | nping-only on pass1-live hosts |
 | httpx | `examples/scope.lab.httpx.yaml` | `httpx -silent -l` tile hosts file `-p 18080` | title/status/tech on pass1-live hosts |
 | sslscan | `examples/scope.lab.sslscan.yaml` | `sslscan --xml --no-colour` first tile host `:18080` | `--show-certificate` on first pass1-live host |
+| tlsx | `examples/scope.lab.tlsx.yaml` | `tlsx -silent -l` tile hosts file `-p 18080` | `-san -cn` on pass1-live hosts |
 
 rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
@@ -77,6 +83,11 @@ Connection-refused `ERROR` lines name the IP but are not live hosts.
 sslscan takes one target per process; pass1 is the first usable host
 of each `/30`.
 
+tlsx is a **TLS probe**. HTTP 200 is not enough: tlsx prints `ip:port`
+only after a TLS handshake. Prove reuses the sslscan TLS lab on the
+same loopback addresses. tlsx itself must still handshake and print
+leading `ip:18080` lines. Banner or SAN IPs are not live hosts.
+
 fping is ICMP host discovery. Loopback answers; no TCP listener is
 required. The committed fping SCOPE omits `pass2.ports` — there is no
 port surface.
@@ -97,6 +108,8 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
   into `~/.local/bin` (or `go install`) on this VM only
 - **sslscan**: `PATH` / `COVEY_SSLSCAN` / optional `apt-get install sslscan`
   on this VM only
+- **tlsx**: `PATH` / `COVEY_TLSX` / optional GitHub release download
+  into `~/.local/bin` (or `go install`) on this VM only
 
 `--no-install` fails closed if the binary is missing.
 
@@ -104,7 +117,7 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
 
 Prove exits non-zero when:
 
-- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, or sslscan
+- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, or tlsx
 - SCOPE is unsigned, expired, or a wide spray
 - the BYO binary cannot be resolved or will not run
 - pass1 workers fail, artifacts are missing, no live hosts, or pass2

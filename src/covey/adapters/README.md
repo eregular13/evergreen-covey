@@ -107,11 +107,22 @@ BYO only. Resolve from `PATH` / `COVEY_SSLSCAN`, or the prove path may
 
 `python -m covey prove --adapter sslscan`
 
+## tlsx (eighth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_TLSX`, or the prove path may
+download the official GitHub release onto **this VM only**.
+
+- pass1: `-silent -l` tile hosts file `-p <SCOPE ports>`
+- pass2: `-san -cn` against pass1-live hosts (tlsx 1.4+ refuses `-so` with those)
+- prove serves TLS (TLS handshake ≠ HTTP 200 ≠ bare TCP accept)
+
+`python -m covey prove --adapter tlsx`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
 hping3, ike-scan, nbtscan, onesixtyone, braa, svmap,
-whatweb, tlsx — same shard/stage kit, same fail-closed SCOPE,
+whatweb — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
 The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`
