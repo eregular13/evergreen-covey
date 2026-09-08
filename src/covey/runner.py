@@ -43,6 +43,11 @@ HTTPX_LINUX_X64_URL = (
     "https://github.com/projectdiscovery/httpx/releases/download/"
     f"v{HTTPX_RELEASE}/httpx_{HTTPX_RELEASE}_linux_amd64.zip"
 )
+TLSX_RELEASE = "1.4.0"
+TLSX_LINUX_X64_URL = (
+    "https://github.com/projectdiscovery/tlsx/releases/download/"
+    f"v{TLSX_RELEASE}/tlsx_{TLSX_RELEASE}_linux_amd64.zip"
+)
 
 
 @dataclass
@@ -646,6 +651,106 @@ def ensure_sslscan(*, install_if_missing: bool = False) -> ExecSpec:
     if not found:
         raise RunnerError("sslscan installed but still not on PATH")
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="sslscan")
+
+
+def _install_tlsx_release() -> Path:
+    """Download the official tlsx release onto this VM. Never into git."""
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        raise RunnerError(
+            f"no tlsx GitHub release mapping for machine={machine!r}; "
+            "install tlsx yourself and set COVEY_TLSX"
+        )
+    dest_dir = Path.home() / ".local" / "bin"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "tlsx"
+    try:
+        with tempfile.TemporaryDirectory(prefix="covey-tlsx-") as tmp:
+            work = Path(tmp)
+            archive = work / "tlsx.zip"
+            urllib.request.urlretrieve(TLSX_LINUX_X64_URL, archive)
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(work)
+            found = None
+            for path in work.rglob("tlsx"):
+                if path.is_file() and os.access(path, os.X_OK):
+                    found = path
+                    break
+            if found is None:
+                raise RunnerError("tlsx binary missing from extracted release")
+            dest.write_bytes(found.read_bytes())
+            dest.chmod(0o755)
+    except urllib.error.URLError as exc:
+        raise RunnerError(f"download tlsx {TLSX_RELEASE} failed: {exc}") from exc
+    except RunnerError:
+        raise
+    except Exception as exc:
+        raise RunnerError(f"unpack tlsx {TLSX_RELEASE} failed: {exc}") from exc
+    if not dest.is_file():
+        raise RunnerError("tlsx download finished but binary is missing")
+    _prepend_path(dest_dir)
+    return dest
+
+
+def _go_install_tlsx() -> Path:
+    go = shutil.which("go")
+    if go is None:
+        raise RunnerError("go not on PATH; cannot go-install tlsx")
+    dest_dir = Path.home() / ".local" / "bin"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["GOBIN"] = str(dest_dir)
+    completed = subprocess.run(
+        [go, "install", f"github.com/projectdiscovery/tlsx/cmd/tlsx@v{TLSX_RELEASE}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if completed.returncode != 0:
+        raise RunnerError(
+            "go install tlsx failed: " + (completed.stderr or completed.stdout)[-400:]
+        )
+    dest = dest_dir / "tlsx"
+    if not dest.is_file():
+        raise RunnerError("go install tlsx finished but binary is missing")
+    _prepend_path(dest_dir)
+    return dest
+
+
+def ensure_tlsx(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO tlsx. Optionally fetch a release onto this VM only."""
+    try:
+        return resolve_exec("tlsx")
+    except RunnerError as missing:
+        if not install_if_missing:
+            raise
+        last = missing
+    errors: list[str] = [str(last)]
+    try:
+        path = _install_tlsx_release()
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="tlsx",
+        )
+    except RunnerError as exc:
+        errors.append(str(exc))
+    try:
+        path = _go_install_tlsx()
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="tlsx",
+        )
+    except RunnerError as exc:
+        errors.append(str(exc))
+    raise RunnerError(
+        "tlsx not available and prove-install failed (binary stays off git). "
+        + " | ".join(errors)
+    )
 
 
 def ensure_httpx(*, install_if_missing: bool = False) -> ExecSpec:

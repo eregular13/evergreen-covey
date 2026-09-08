@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, or sslscan; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, or tlsx; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -26,6 +26,7 @@ from covey.runner import (
     ensure_nping,
     ensure_rustscan,
     ensure_sslscan,
+    ensure_tlsx,
     run_plan,
 )
 from covey.scope import load
@@ -37,6 +38,7 @@ NAABU_LAB_SCOPE = Path("examples/scope.lab.naabu.yaml")
 NPING_LAB_SCOPE = Path("examples/scope.lab.nping.yaml")
 HTTPX_LAB_SCOPE = Path("examples/scope.lab.httpx.yaml")
 SSLSCAN_LAB_SCOPE = Path("examples/scope.lab.sslscan.yaml")
+TLSX_LAB_SCOPE = Path("examples/scope.lab.tlsx.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -45,6 +47,7 @@ LAB_SCOPES = {
     "nping": NPING_LAB_SCOPE,
     "httpx": HTTPX_LAB_SCOPE,
     "sslscan": SSLSCAN_LAB_SCOPE,
+    "tlsx": TLSX_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -55,7 +58,15 @@ RUSTSCAN_LAB_PORT = 18080
 def _artifact_ok(directory: Path, adapter_name: str) -> bool:
     if adapter_name == "nmap":
         return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
-    if adapter_name in {"rustscan", "fping", "naabu", "nping", "httpx", "sslscan"}:
+    if adapter_name in {
+        "rustscan",
+        "fping",
+        "naabu",
+        "nping",
+        "httpx",
+        "sslscan",
+        "tlsx",
+    }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
         if not argv_path.is_file() or not stdout_path.is_file():
@@ -144,8 +155,8 @@ def loopback_lab_listeners(
     rustscan, naabu, and nping --tcp-connect are TCP probes (unlike nmap
     ``-sn``). Without a listener, pass1 finds no live hosts and prove fails
     closed. This is lab fixture, not a forged scanner result. httpx needs
-    ``loopback_http_lab`` (HTTP 200). sslscan needs ``loopback_tls_lab``
-    (a TLS handshake). Neither is this bare accept.
+    ``loopback_http_lab`` (HTTP 200). sslscan and tlsx need
+    ``loopback_tls_lab`` (a TLS handshake). Neither is this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -250,19 +261,20 @@ def loopback_tls_lab(
     hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
     port: int = RUSTSCAN_LAB_PORT,
 ) -> Iterator[tuple[str, int]]:
-    """Serve TLS on loopback tiles so sslscan can observe a handshake.
+    """Serve TLS on loopback tiles so sslscan/tlsx can observe a handshake.
 
     Bare TCP accept and plain HTTP are not enough: sslscan prints
-    ``Connected to`` only after a TLS handshake. This is lab fixture,
-    not a forged scanner result. The ephemeral cert stays off git.
+    ``Connected to`` and tlsx prints ``ip:port`` only after a TLS
+    handshake. This is lab fixture, not a forged scanner result. The
+    ephemeral cert stays off git.
     """
     openssl = shutil.which("openssl")
     if openssl is None:
         raise RunnerError(
-            "sslscan lab needs openssl on PATH to mint a throwaway loopback cert"
+            "TLS lab needs openssl on PATH to mint a throwaway loopback cert"
         )
     servers: list[ThreadingHTTPServer] = []
-    with tempfile.TemporaryDirectory(prefix="covey-sslscan-lab-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="covey-tls-lab-") as tmp:
         work = Path(tmp)
         cert = work / "cert.pem"
         key = work / "key.pem"
@@ -289,7 +301,7 @@ def loopback_tls_lab(
         )
         if minted.returncode != 0 or not cert.is_file() or not key.is_file():
             raise RunnerError(
-                "sslscan lab could not mint a throwaway TLS cert: "
+                "TLS lab could not mint a throwaway TLS cert: "
                 + (minted.stderr or minted.stdout)[-400:]
             )
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -301,7 +313,7 @@ def loopback_tls_lab(
                     server.socket = context.wrap_socket(server.socket, server_side=True)
                 except OSError as exc:
                     raise RunnerError(
-                        f"sslscan lab cannot bind TLS {host}:{port}: {exc}"
+                        f"TLS lab cannot bind TLS {host}:{port}: {exc}"
                     ) from exc
                 server.daemon_threads = True
                 threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -335,6 +347,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_httpx(install_if_missing=install_if_missing)
     if name == "sslscan":
         return ensure_sslscan(install_if_missing=install_if_missing)
+    if name == "tlsx":
+        return ensure_tlsx(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -390,7 +404,7 @@ def run_prove(
     if plugin.name == "httpx":
         with loopback_http_lab(port=_lab_port(scope)):
             report = _execute()
-    elif plugin.name == "sslscan":
+    elif plugin.name in {"sslscan", "tlsx"}:
         with loopback_tls_lab(port=_lab_port(scope)):
             report = _execute()
     elif plugin.name in {"rustscan", "naabu", "nping"}:

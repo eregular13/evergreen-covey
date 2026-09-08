@@ -14,9 +14,10 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **nping** is the fifth (`python -m covey prove --adapter nping`).
 **httpx** is the sixth (`python -m covey prove --adapter httpx`).
 **sslscan** is the seventh (`python -m covey prove --adapter sslscan`).
-The other 13 remain argv+unit only — do not claim them live. Source of
+**tlsx** is the eighth (`python -m covey prove --adapter tlsx`).
+The other 12 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
-`nping`, `httpx`, `sslscan`) in `src/covey/adapters/registry.py`. See
+`nping`, `httpx`, `sslscan`, `tlsx`) in `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
 ```
@@ -71,7 +72,9 @@ uses `examples/scope.lab.httpx.yaml` (`adapter: httpx`, SCOPE ports
 `18080`) and an HTTP/1.1 200 lab on those same addresses — bare TCP
 accept is not enough. sslscan uses `examples/scope.lab.sslscan.yaml`
 (`adapter: sslscan`, SCOPE ports `18080`) and a TLS lab on those same
-addresses — HTTP 200 is not enough. See [PROVE.md](PROVE.md).
+addresses — HTTP 200 is not enough. tlsx uses
+`examples/scope.lab.tlsx.yaml` (`adapter: tlsx`, SCOPE ports `18080`)
+and the same TLS lab — HTTP 200 is not enough. See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
@@ -162,6 +165,7 @@ python -m covey prove --adapter naabu
 python -m covey prove --adapter nping
 python -m covey prove --adapter httpx
 python -m covey prove --adapter sslscan
+python -m covey prove --adapter tlsx
 python -m covey export --out out
 # or
 make export
