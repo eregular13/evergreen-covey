@@ -26,6 +26,7 @@ class Hping3Adapter(LiveAdapter):
 
     name = "hping3"
     binary = "hping3"
+    default_pass2_ports = "80"
 
     def pass1_argv(self, target: str, out_prefix: str) -> list[str]:
         require_target_prefix(target, out_prefix, name=self.name)
@@ -33,13 +34,13 @@ class Hping3Adapter(LiveAdapter):
 
     def pass2_argv_template(self, out_prefix: str) -> list[str]:
         require_target_prefix(".", out_prefix, name=self.name)
-        return ["hping3", "--syn", "-p", "80", "-c", "2", "{hosts}"]
+        return ["hping3", "--syn", "-p", self.pass2_port_first, "-c", "2", "{hosts}"]
 
     def pass2_argv(self, hosts: list[str], out_prefix: str) -> list[str]:
         if not hosts:
             raise AdapterError("hping3 pass2 deepen refuses empty live-host list")
         require_target_prefix(".", out_prefix, name=self.name)
-        return ["hping3", "--syn", "-p", "80", "-c", "2", first_host(hosts[0]), *hosts[1:]]
+        return ["hping3", "--syn", "-p", self.pass2_port_first, "-c", "2", first_host(hosts[0]), *hosts[1:]]
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         blob = read_artifact_blob(artifact_dir)

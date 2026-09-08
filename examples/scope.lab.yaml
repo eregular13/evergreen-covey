@@ -3,6 +3,11 @@
 # Signature is HMAC-SHA256 over the document using the demo key
 # (demo: true). Operators replace this with their own RFC1918 lab
 # and sign with COVEY_SCOPE_HMAC_KEY.
+#
+# Palisade P0 — ports honesty: pass2/deepen ports are SCOPE-owned.
+# They are not a silent DEFAULT_PASS2_PORTS baked into the nmap adapter.
+# Omit pass2.ports to keep the adapter default; set it to make the
+# deepen surface explicit. Empty/unsigned SCOPE is still refused.
 version: 1
 demo: true
 consent:
@@ -19,6 +24,8 @@ allow_wide: false
 tile:
   default_prefix: 24
   small_prefix: 30
+pass2:
+  ports: "22"
 targets:
 - cidr: 127.0.0.0/28
-signature: 3c74bf7eb2037994869d503d6bf2dec61db50f5003938601cc0678b1ab645da9
+signature: 2cb286cb700f9f2cb0df1b7ec1484592570acb24d50e26d9cb790631d7318e8c

@@ -91,9 +91,16 @@ allow_wide: false
 tile:
   default_prefix: 24
   small_prefix: 30      # lab /28 → four /30 tiles
+pass2:
+  ports: "22"           # SCOPE-owned deepen ports (Palisade P0)
 targets:
   - cidr: 127.0.0.0/28
 ```
+
+`pass2.ports` (alias `deepen.ports`) is the honest deepen surface — not a
+silent adapter default. Omit it to keep the adapter's built-in list; set it
+to declare the ports the operator actually consented to. Empty or injectable
+port strings are refused. Unsigned or empty SCOPE is still refused.
 
 Sign a document in place:
 
@@ -124,19 +131,30 @@ or run.
 python -m covey plan --scope examples/scope.lab.yaml --out out/plan.json
 python -m covey run  --scope examples/scope.lab.yaml --out out
 python -m covey prove
+python -m covey export --out out
+# or
+make export
 ```
 
 `plan` writes worker JSON (shard id, target, stage, argv / argv template)
 and does **not** invoke a scanner.
 
+`export` reads a prove/run `out/` and writes `out/pack_drop/` for the
+assessment MCP / `grc-collector-pack` **file_drop** (assets, conservative
+open-port findings, small evidence copies). It does **not** POST anywhere
+and does not wrap RiskReady. Honesty baked into `meta.json` and
+`README_EXPORT.md`: surface map ≠ honeypot validated ≠ control operating
+effectiveness. See [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
+
 ## Layout
 
 | Module | Role |
 | --- | --- |
-| `covey.scope` | load SCOPE, validate consent / window / targets, HMAC |
+| `covey.scope` | load SCOPE, validate consent / window / targets / pass2 ports, HMAC |
 | `covey.shard` | expand allowed CIDRs into tiles (pure) |
 | `covey.plan` | worker plan JSON, no spawn |
 | `covey.runner` | local subprocess or `docker run`; land stdout/stderr/xml |
+| `covey.export` | Seen → SoR-ready `pack_drop/` (file_drop only) |
 | `covey.adapters` | 20 live BYO argv+parse adapters + OpenVAS file_drop stub |
 
 See [`ADAPTERS.md`](ADAPTERS.md) and

@@ -39,6 +39,8 @@ class Plan:
     )
     signer: str = ""
     purpose: str = ""
+    deepen_ports: str | None = None
+    deepen_host_timeout: str | None = None
 
     @property
     def pass1_workers(self) -> list[Worker]:
@@ -54,6 +56,14 @@ class Plan:
             "created_at": self.created_at,
             "signer": self.signer,
             "purpose": self.purpose,
+            "deepen": {
+                k: v
+                for k, v in {
+                    "ports": self.deepen_ports,
+                    "host_timeout": self.deepen_host_timeout,
+                }.items()
+                if v
+            },
             "max_workers": self.max_workers,
             "shards": list(self.shards),
             "workers": [w.to_dict() for w in self.workers],
@@ -92,7 +102,9 @@ def build_plan(
     out_root: Path | str = "out",
     adapter: Adapter | None = None,
 ) -> Plan:
-    plugin = adapter or adapter_for(scope.adapter)
+    plugin = adapter or adapter_for(scope.adapter, deepen=scope.deepen)
+    if adapter is not None and hasattr(plugin, "apply_deepen"):
+        plugin.apply_deepen(scope.deepen)
     if getattr(plugin, "file_drop_only", False):
         raise AdapterError(f"{plugin.name} is file_drop only")
 
@@ -129,4 +141,6 @@ def build_plan(
         workers=workers,
         signer=scope.signer,
         purpose=scope.purpose,
+        deepen_ports=scope.deepen.ports,
+        deepen_host_timeout=scope.deepen.host_timeout,
     )

@@ -201,12 +201,39 @@ def _masscan_record_ip(item: object) -> str | None:
     return ip
 
 
+def first_port(spec: str) -> str:
+    """First scalar port from a SCOPE/nmap-style list (``22,80`` / ``T:22``)."""
+    token = (spec or "").split(",")[0].strip()
+    token = token.split("-")[0].strip()
+    if ":" in token:
+        token = token.rsplit(":", 1)[-1].strip()
+    return token
+
+
 class LiveAdapter:
     """Tiny base so each BYO tool only fills argv + parse notes."""
 
     name: str = ""
     file_drop_only: bool = False
     binary: str = ""
+    default_pass2_ports: str = "22,80,443,3389,8080"
+
+    def __init__(self) -> None:
+        self.pass2_ports = self.default_pass2_ports
+        self.host_timeout: str | None = None
+
+    def apply_deepen(self, deepen: object) -> None:
+        """Honor SCOPE pass2/deepen ports. Adapter defaults stay if omitted."""
+        ports = getattr(deepen, "ports", None)
+        if ports:
+            self.pass2_ports = str(ports)
+        timeout = getattr(deepen, "host_timeout", None)
+        if timeout:
+            self.host_timeout = str(timeout)
+
+    @property
+    def pass2_port_first(self) -> str:
+        return first_port(self.pass2_ports) or first_port(self.default_pass2_ports)
 
     def pass1_argv(self, target: str, out_prefix: str) -> list[str]:
         raise NotImplementedError

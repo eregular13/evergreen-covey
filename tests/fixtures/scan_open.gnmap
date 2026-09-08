@@ -1,0 +1,4 @@
+# Nmap 7.94 scan initiated
+Host: 127.0.0.1 () Status: Up
+Host: 127.0.0.1 () Ports: 22/open/tcp//ssh///,80/closed/tcp//// Ignored State: closed (65533)
+# Nmap done

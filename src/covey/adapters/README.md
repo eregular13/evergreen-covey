@@ -34,6 +34,8 @@ BYO only. Resolve from `PATH`, `COVEY_NMAP`, or a user image
 
 - pass1: `-sn` ping/discover on one tile
 - pass2: `-sV` **only** against hosts parsed live from that shard’s pass1 artifacts
+- pass2 ports come from SCOPE `pass2.ports` / `deepen.ports` (Palisade P0).
+  The adapter default (`22`) is used only when SCOPE omits the field.
 
 `make prove` still exercises this path.
 

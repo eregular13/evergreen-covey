@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from covey.adapters.nmap import NmapAdapter
+from covey.adapters.registry import adapter_for
 from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
 from covey.runner import ensure_nmap, run_plan
@@ -83,7 +83,7 @@ def run_prove(
 
     spec = ensure_nmap(install_if_missing=install_if_missing)
     scope = load(path)
-    adapter = NmapAdapter()
+    adapter = adapter_for(scope.adapter, deepen=scope.deepen)
     plan = build_plan(scope, out_root=out, adapter=adapter)
     plan_path = out / "plan.json"
     plan_path.write_text(json.dumps(plan.to_dict(), indent=2) + "\n", encoding="utf-8")

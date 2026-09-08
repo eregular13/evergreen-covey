@@ -11,7 +11,7 @@ forbidden.
 
 | id | binary | pass1 | pass2 | parse notes | BYO env |
 | --- | --- | --- | --- | --- | --- |
-| `nmap` | `nmap` | `-sn` ping/discover on the tile | `-sV` on pass1-live hosts only | XML `status=up` / gnmap `Status: Up` | `COVEY_NMAP` |
+| `nmap` | `nmap` | `-sn` ping/discover on the tile | `-sV` on pass1-live hosts only; ports from SCOPE `pass2.ports` (else `22`) | XML `status=up` / gnmap `Status: Up` | `COVEY_NMAP` |
 | `masscan` | `masscan` | `-p80,443` JSON on the CIDR | extra ports on live hosts | masscan `-oJ` `ip` + open ports | `COVEY_MASSCAN` |
 | `rustscan` | `rustscan` | `-a <cidr> -g` (no nmap `--`) | `-a <hosts> -p 22,80,443,…` | `Open a.b.c.d:port` / greppable | `COVEY_RUSTSCAN` |
 | `naabu` | `naabu` | `-host <cidr> -top-ports 100` | `-host <hosts> -p 22,80,443,…` | `ip:port` lines | `COVEY_NAABU` |
@@ -45,6 +45,10 @@ forbidden.
 - **zmap**: `-B /dev/null` turns off the default public blocklist so a
   SCOPE-approved RFC1918 tile is reachable. SCOPE spray rules are unchanged.
 - **rustscan**: never appends `--` nmap flags. Deepen stays rustscan-only.
+- **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
+  operator-declared. Adapters keep their built-in default when the field is
+  omitted. Empty or injectable strings are refused. Single-port tools
+  (zmap, nping, hping3) use the first listed port.
 
 ## Resolution
 

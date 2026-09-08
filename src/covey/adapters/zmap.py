@@ -15,6 +15,7 @@ class ZmapAdapter(LiveAdapter):
 
     name = "zmap"
     binary = "zmap"
+    default_pass2_ports = "443"
 
     def pass1_argv(self, target: str, out_prefix: str) -> list[str]:
         require_target_prefix(target, out_prefix, name=self.name)
@@ -35,7 +36,7 @@ class ZmapAdapter(LiveAdapter):
         return [
             "zmap",
             "-p",
-            "443",
+            self.pass2_port_first,
             "-o",
             f"{out_prefix}.txt",
             "-B",
@@ -51,7 +52,7 @@ class ZmapAdapter(LiveAdapter):
         return [
             "zmap",
             "-p",
-            "443",
+            self.pass2_port_first,
             "-o",
             f"{out_prefix}.txt",
             "-B",

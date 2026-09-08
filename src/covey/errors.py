@@ -19,3 +19,7 @@ class RunnerError(CoveyError):
 
 class AdapterError(CoveyError):
     """Adapter argv / artifact handling refused."""
+
+
+class ExportError(CoveyError):
+    """Pack export refused or run artifacts are incomplete."""

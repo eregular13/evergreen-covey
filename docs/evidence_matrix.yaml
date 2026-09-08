@@ -1,0 +1,152 @@
+# Evergreen free-assessment evidence matrix
+# Product contract shared by Covey, Hermes lab, and grc-collector-pack.
+# Said = interview/policy. Seen = machine observation. Shown = operating proof.
+# Honesty: surface map ≠ honeypot validated ≠ control operating effectiveness.
+# Ingest is file_drop only. No RiskReady POST.
+
+version: 1
+schema: evergreen.evidence_matrix.v1
+honesty:
+  line: surface map ≠ honeypot validated ≠ control operating effectiveness
+  ingest: file_drop
+  riskready_post: false
+sor_objects: [asset, finding, evidence, poam]
+
+lanes:
+  - id: identity_idp
+    lane: Identity / IdP
+    said: IdP named; MFA "required"; joiner/leaver process described
+    seen: IdP tenant export, SSO app list, MFA enrollment counts, admin-role dump
+    shown: MFA challenge on a live login; break-glass account monitored; leaver deprovision timestamp
+    example_collectors:
+      - entra / google-workspace / okta read-only export
+      - interview notes (Said)
+    sor:
+      asset: [idp_tenant, sso_app, admin_role]
+      finding: [mfa_gap_observed, stale_admin]
+      evidence: [idp_export.json, screenshot_ref]
+      poam: [mfa_coverage, admin_hygiene]
+    honesty_limits: Seen tenant JSON is not Shown MFA. Do not claim control OE from a config dump.
+
+  - id: mdm_endpoint
+    lane: MDM / endpoint
+    said: Fleet is enrolled; disk encryption and EDR "on every laptop"
+    seen: MDM device inventory, encryption/EDR policy assignment counts
+    shown: One device proves FileVault/BitLocker + EDR check-in within the window
+    example_collectors:
+      - jamf / intune / kandji inventory export
+      - osquery file_drop (operator-dropped; not a Covey live adapter)
+    sor:
+      asset: [device, user_binding]
+      finding: [unenrolled_device, encryption_unassigned]
+      evidence: [mdm_inventory.json]
+      poam: [mdm_coverage, encryption]
+    honesty_limits: Policy assigned ≠ agent healthy. Inventory is Seen, not Shown.
+
+  - id: cloud_saas
+    lane: Cloud / SaaS config
+    said: CSPM on; public storage "disabled"; SSO-only SaaS
+    seen: Cloud account list, public-bucket probe, SaaS idP binding flags
+    shown: Ticket + remediating change on one public finding; SSO enforced on a sampled app
+    example_collectors:
+      - prowler / scoutsuite / CIS benchmark file_drop
+      - SaaS admin export
+    sor:
+      asset: [cloud_account, bucket, saas_app]
+      finding: [public_storage_observed, local_auth_enabled]
+      evidence: [cis_json, admin_export]
+      poam: [public_exposure, sso_enforcement]
+    honesty_limits: A scanner finding is Seen. Not a production-control OE test.
+
+  - id: email_dns
+    lane: Email / DNS
+    said: SPF/DKIM/DMARC "set"; DNSSEC planned
+    seen: Published SPF/DKIM/DMARC/MTA-STS records from DNS
+    shown: DMARC disposition reject + aggregate report sampled; lookalike domain watched
+    example_collectors:
+      - dig / checkdmarc style export
+    sor:
+      asset: [domain, mail_org]
+      finding: [dmarc_missing, spf_softfail_only]
+      evidence: [dns_txt.json]
+      poam: [dmarc, dns_hygiene]
+    honesty_limits: A TXT record is Seen. Deliverability or mailbox compromise is not proven.
+
+  - id: covey_surface
+    lane: Covey surface
+    said: External/internal ranges in signed SCOPE
+    seen: pass1 live hosts + pass2 open ports from BYO nmap (or other live adapter)
+    shown: not this lane — surface map only
+    example_collectors:
+      - covey prove / covey run
+      - covey export → pack_drop/
+    sor:
+      asset: [host, service]
+      finding: [open_port_observed]
+      evidence: [scan.xml, scan.gnmap, scan.json]
+      poam: []
+    honesty_limits: >
+      Open port ≠ vulnerability ≠ control failure. Never file OE/POAM from nmap
+      alone. pack_drop is file_drop only; no RiskReady POST. See README_EXPORT.md.
+
+  - id: vm_file_drop
+    lane: VM file_drop
+    said: Heavy scanner / VM used in the engagement
+    seen: Operator-dropped OpenVAS/Greenbone (or similar) XML already on disk
+    shown: not automatic — a human maps a true-positive to a control
+    example_collectors:
+      - OpenVAS / Greenbone / GVM file_drop (Covey will not spawn these)
+    sor:
+      asset: [host, service]
+      finding: [scanner_finding_ingested]
+      evidence: [openvas.xml]
+      poam: [only after analyst accept]
+    honesty_limits: file_drop only. LICENSE-LOCK — no live OpenVAS adapter, no Nuclei wrap.
+
+  - id: honeypot_fleet
+    lane: Honeypot / fleet-sensor pack_drop
+    said: Decoys deployed; sensors enrolled
+    seen: honeypot_event.v1 / session_summary.v1 under in/honeypot/
+    shown: A real session against a decoy (still not production-control OE)
+    example_collectors:
+      - fleet-sensor / Hermes lab honeypot
+    sor:
+      asset: [sensor, decoy_service]
+      finding: [decoy_session_observed]
+      evidence: [events.jsonl, sessions.jsonl]
+      poam: []
+    honesty_limits: >
+      Honeypot validated ≠ control operating effectiveness. Do not treat a
+      decoy hit as proof MFA/EDR/backup works on production. Contract:
+      docs/honeypot_pack_drop.md.
+
+  - id: interview_docs
+    lane: Interview / docs
+    said: Policies, diagrams, vendor SOC2, "we do that"
+    seen: Document hashes / filenames received (not the claims inside)
+    shown: Walkthrough that exercises the control on a live system
+    example_collectors:
+      - interview notes
+      - policy PDF parse
+    sor:
+      asset: [policy_doc]
+      finding: []
+      evidence: [notes.md, policy.pdf]
+      poam: [doc_gap]
+    honesty_limits: Said is not Seen. A policy PDF is not operating effectiveness.
+
+  - id: logging_backup_ir
+    lane: Logging / backup / IR Shown
+    said: SIEM on; daily backups; IR plan exists
+    seen: Retention settings, backup-job inventory, IR plan document
+    shown: >
+      Sampled log query in-window; restore test ticket; tabletop or live IR
+      action with timestamps
+    example_collectors:
+      - SIEM export / backup catalog / IR ticket
+    sor:
+      asset: [log_source, backup_job]
+      finding: [no_restore_test, retention_gap]
+      evidence: [query_result, restore_ticket]
+      poam: [backup_restore, ir_exercise]
+    honesty_limits: A config flag or plan PDF is Said/Seen. Shown requires a dated exercise.
