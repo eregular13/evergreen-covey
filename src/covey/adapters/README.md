@@ -61,9 +61,20 @@ BYO only. Resolve from `PATH` / `COVEY_FPING`, or the prove path may
 
 `python -m covey prove --adapter fping`
 
+## naabu (fourth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_NAABU`, or the prove path may
+download the official GitHub release onto **this VM only**.
+
+- pass1: `-host <tile> -silent -p <SCOPE ports> -scan-type connect`
+- pass2: naabu-only against pass1-live hosts
+- prove binds a loopback lab listener (port scanner ≠ ping sweep)
+
+`python -m covey prove --adapter naabu`
+
 ## Other live BYO adapters (argv+unit only)
 
-masscan, naabu, arp-scan, netdiscover, zmap, unicornscan,
+masscan, arp-scan, netdiscover, zmap, unicornscan,
 nping, hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
 whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.

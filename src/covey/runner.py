@@ -33,6 +33,11 @@ RUSTSCAN_LINUX_X64_URL = (
     "https://github.com/bee-san/RustScan/releases/download/"
     f"{RUSTSCAN_RELEASE}/x86_64-linux-rustscan.tar.gz.zip"
 )
+NAABU_RELEASE = "2.6.1"
+NAABU_LINUX_X64_URL = (
+    "https://github.com/projectdiscovery/naabu/releases/download/"
+    f"v{NAABU_RELEASE}/naabu_{NAABU_RELEASE}_linux_amd64.zip"
+)
 
 
 @dataclass
@@ -409,6 +414,106 @@ def ensure_fping(*, install_if_missing: bool = False) -> ExecSpec:
     if not found:
         raise RunnerError("fping installed but still not on PATH")
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="fping")
+
+
+def _install_naabu_release() -> Path:
+    """Download the official naabu release onto this VM. Never into git."""
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        raise RunnerError(
+            f"no naabu GitHub release mapping for machine={machine!r}; "
+            "install naabu yourself and set COVEY_NAABU"
+        )
+    dest_dir = Path.home() / ".local" / "bin"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / "naabu"
+    try:
+        with tempfile.TemporaryDirectory(prefix="covey-naabu-") as tmp:
+            work = Path(tmp)
+            archive = work / "naabu.zip"
+            urllib.request.urlretrieve(NAABU_LINUX_X64_URL, archive)
+            with zipfile.ZipFile(archive) as zf:
+                zf.extractall(work)
+            found = None
+            for path in work.rglob("naabu"):
+                if path.is_file() and os.access(path, os.X_OK):
+                    found = path
+                    break
+            if found is None:
+                raise RunnerError("naabu binary missing from extracted release")
+            dest.write_bytes(found.read_bytes())
+            dest.chmod(0o755)
+    except urllib.error.URLError as exc:
+        raise RunnerError(f"download naabu {NAABU_RELEASE} failed: {exc}") from exc
+    except RunnerError:
+        raise
+    except Exception as exc:
+        raise RunnerError(f"unpack naabu {NAABU_RELEASE} failed: {exc}") from exc
+    if not dest.is_file():
+        raise RunnerError("naabu download finished but binary is missing")
+    _prepend_path(dest_dir)
+    return dest
+
+
+def _go_install_naabu() -> Path:
+    go = shutil.which("go")
+    if go is None:
+        raise RunnerError("go not on PATH; cannot go-install naabu")
+    dest_dir = Path.home() / ".local" / "bin"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env["GOBIN"] = str(dest_dir)
+    completed = subprocess.run(
+        [go, "install", f"github.com/projectdiscovery/naabu/v2/cmd/naabu@v{NAABU_RELEASE}"],
+        check=False,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    if completed.returncode != 0:
+        raise RunnerError(
+            "go install naabu failed: " + (completed.stderr or completed.stdout)[-400:]
+        )
+    dest = dest_dir / "naabu"
+    if not dest.is_file():
+        raise RunnerError("go install naabu finished but binary is missing")
+    _prepend_path(dest_dir)
+    return dest
+
+
+def ensure_naabu(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO naabu. Optionally fetch a release onto this VM only."""
+    try:
+        return resolve_exec("naabu")
+    except RunnerError as missing:
+        if not install_if_missing:
+            raise
+        last = missing
+    errors: list[str] = [str(last)]
+    try:
+        path = _install_naabu_release()
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="naabu",
+        )
+    except RunnerError as exc:
+        errors.append(str(exc))
+    try:
+        path = _go_install_naabu()
+        return ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="naabu",
+        )
+    except RunnerError as exc:
+        errors.append(str(exc))
+    raise RunnerError(
+        "naabu not available and prove-install failed (binary stays off git). "
+        + " | ".join(errors)
+    )
 
 
 def _write_text(path: Path, text: str) -> None:

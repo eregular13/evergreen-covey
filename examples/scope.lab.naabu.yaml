@@ -1,0 +1,26 @@
+# Evergreen Covey — signed demo SCOPE for the naabu loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. naabu is a port scanner, so prove binds a lab TCP
+# listener on 18080 on the first usable host of each /30.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey naabu loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: naabu
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: 63b5d81aa588e4e680e240595d38ca24059e9f6fb7c424c5d2c1dc828aa7a993
