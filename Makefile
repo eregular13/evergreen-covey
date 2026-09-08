@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -52,6 +52,12 @@ prove-naabu: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-nping: venv
 	$(PY) -m covey prove --adapter nping --out out/nping
+
+# Sixth e2e-proven adapter. BYO httpx (GitHub release on this VM only).
+# Needs an HTTP 200 lab, not a bare TCP accept.
+# Does not replace `make prove` (nmap stays the default).
+prove-httpx: venv
+	$(PY) -m covey prove --adapter httpx --out out/httpx
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

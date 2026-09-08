@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, or nping; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, or httpx; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import socket
 import threading
 from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
 
@@ -15,6 +16,7 @@ from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
 from covey.runner import (
     ensure_fping,
+    ensure_httpx,
     ensure_naabu,
     ensure_nmap,
     ensure_nping,
@@ -28,12 +30,14 @@ RUSTSCAN_LAB_SCOPE = Path("examples/scope.lab.rustscan.yaml")
 FPING_LAB_SCOPE = Path("examples/scope.lab.fping.yaml")
 NAABU_LAB_SCOPE = Path("examples/scope.lab.naabu.yaml")
 NPING_LAB_SCOPE = Path("examples/scope.lab.nping.yaml")
+HTTPX_LAB_SCOPE = Path("examples/scope.lab.httpx.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
     "fping": FPING_LAB_SCOPE,
     "naabu": NAABU_LAB_SCOPE,
     "nping": NPING_LAB_SCOPE,
+    "httpx": HTTPX_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -44,7 +48,7 @@ RUSTSCAN_LAB_PORT = 18080
 def _artifact_ok(directory: Path, adapter_name: str) -> bool:
     if adapter_name == "nmap":
         return (directory / "scan.xml").is_file() or (directory / "scan.gnmap").is_file()
-    if adapter_name in {"rustscan", "fping", "naabu", "nping"}:
+    if adapter_name in {"rustscan", "fping", "naabu", "nping", "httpx"}:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
         if not argv_path.is_file() or not stdout_path.is_file():
@@ -132,7 +136,8 @@ def loopback_lab_listeners(
 
     rustscan, naabu, and nping --tcp-connect are TCP probes (unlike nmap
     ``-sn``). Without a listener, pass1 finds no live hosts and prove fails
-    closed. This is lab fixture, not a forged scanner result.
+    closed. This is lab fixture, not a forged scanner result. httpx needs
+    ``loopback_http_lab`` (HTTP 200), not this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -175,6 +180,63 @@ def loopback_lab_listeners(
                 pass
 
 
+class _LabHTTPHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self) -> None:
+        body = b"covey-httpx-lab\n"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_HEAD(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:
+        del format, args
+
+
+@contextmanager
+def loopback_http_lab(
+    hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
+    port: int = RUSTSCAN_LAB_PORT,
+) -> Iterator[tuple[str, int]]:
+    """Serve HTTP/1.1 200 on loopback tiles so httpx can observe live URLs.
+
+    Bare TCP accept is not enough: httpx prints nothing unless the peer
+    speaks HTTP. This is lab fixture, not a forged scanner result.
+    """
+    servers: list[ThreadingHTTPServer] = []
+    try:
+        for host in hosts:
+            try:
+                server = ThreadingHTTPServer((host, port), _LabHTTPHandler)
+            except OSError as exc:
+                raise RunnerError(
+                    f"httpx lab cannot bind HTTP {host}:{port}: {exc}"
+                ) from exc
+            server.daemon_threads = True
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            servers.append(server)
+        yield hosts[0], port
+    finally:
+        for server in servers:
+            try:
+                server.shutdown()
+            except OSError:
+                pass
+            try:
+                server.server_close()
+            except OSError:
+                pass
+
+
 def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
     name = adapter.name
     if name == "nmap":
@@ -187,6 +249,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_naabu(install_if_missing=install_if_missing)
     if name == "nping":
         return ensure_nping(install_if_missing=install_if_missing)
+    if name == "httpx":
+        return ensure_httpx(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -239,7 +303,10 @@ def run_prove(
         assert_report(plan, report, out, adapter_name=plugin.name)
         return report
 
-    if plugin.name in {"rustscan", "naabu", "nping"}:
+    if plugin.name == "httpx":
+        with loopback_http_lab(port=_lab_port(scope)):
+            report = _execute()
+    elif plugin.name in {"rustscan", "naabu", "nping"}:
         with loopback_lab_listeners(port=_lab_port(scope)):
             report = _execute()
     else:

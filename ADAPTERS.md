@@ -5,12 +5,12 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
-(fifth).** The other 15 ids are argv+unit only. See [PROVE.md](PROVE.md).
-Do not claim them live.
+(fifth), `httpx` (sixth).** The other 14 ids are argv+unit only. See
+[PROVE.md](PROVE.md). Do not claim them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
-release / cargo), fping (apt), or naabu (GitHub release / go) **on that
-machine only** — never into git.
+release / cargo), fping (apt), naabu (GitHub release / go), or httpx
+(GitHub release / go) **on that machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -37,7 +37,7 @@ forbidden.
 | `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
 | `sslscan` | `sslscan` | TLS probe of the **first usable tile host** | `--show-certificate` first live host | `Connected to` / XML host | `COVEY_SSLSCAN` |
 | `whatweb` | `whatweb` | `-a 1` against expanded tile hosts | `-a 3` on live hosts | `http://ip` brief log | `COVEY_WHATWEB` |
-| `httpx` | `httpx` | `-silent -l` tile hosts file | title/status/tech on live hosts | `https://ip` lines | `COVEY_HTTPX` |
+| `httpx` | `httpx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**6th e2e-proven**) | title/status/tech on live hosts | `http(s)://ip` lines | `COVEY_HTTPX` |
 | `tlsx` | `tlsx` | `-silent -l` tile hosts file | `-san -cn -so` on live hosts | `ip:443` TLS lines | `COVEY_TLSX` |
 
 ## Limits (honest)
@@ -70,7 +70,13 @@ forbidden.
   (`python -m covey prove --adapter nping` / `make prove-nping`).
   Prove binds the same loopback lab listener as rustscan/naabu.
   Parse requires `Handshake with ip:port completed`; Connection
-  refused `RCVD` lines are not live hosts. httpx stays argv+unit.
+  refused `RCVD` lines are not live hosts.
+- **httpx**: HTTP probe, not a TCP connect scan. Sixth e2e-proven
+  adapter (`python -m covey prove --adapter httpx` / `make prove-httpx`).
+  Prove serves HTTP/1.1 200 on the same loopback addresses rustscan /
+  naabu / nping bind. Bare TCP accept is not enough: httpx prints
+  nothing unless the peer speaks HTTP. Pass1 uses SCOPE `pass2.ports`
+  (lab default `18080`). Parse requires `http(s)://ip` lines.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools

@@ -85,11 +85,22 @@ nping).
 
 `python -m covey prove --adapter nping`
 
+## httpx (sixth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_HTTPX`, or the prove path may
+download the official GitHub release onto **this VM only**.
+
+- pass1: `-silent -l` tile hosts file `-p <SCOPE ports>`
+- pass2: title/status/tech against pass1-live hosts
+- prove serves HTTP/1.1 200 (HTTP probe ≠ bare TCP accept)
+
+`python -m covey prove --adapter httpx`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
 hping3, ike-scan, nbtscan, onesixtyone, braa, svmap, sslscan,
-whatweb, httpx, tlsx — same shard/stage kit, same fail-closed SCOPE,
+whatweb, tlsx — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
 The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`

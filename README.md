@@ -12,9 +12,10 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **fping** is the third (`python -m covey prove --adapter fping`).
 **naabu** is the fourth (`python -m covey prove --adapter naabu`).
 **nping** is the fifth (`python -m covey prove --adapter nping`).
-The other 15 remain argv+unit only — do not claim them live. Source of
+**httpx** is the sixth (`python -m covey prove --adapter httpx`).
+The other 14 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
-`nping`) in `src/covey/adapters/registry.py`. See
+`nping`, `httpx`) in `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
 ```
@@ -64,8 +65,10 @@ naabu`, SCOPE ports `18080`) and the same loopback lab listener; pass1
 is a connect scan of those SCOPE ports, not `-top-ports 100`. nping
 uses `examples/scope.lab.nping.yaml` (`adapter: nping`, SCOPE ports
 `18080`) and the same loopback lab listener; pass1 is unprivileged
-`--tcp-connect`, not raw `--icmp`/`--tcp` (those need root). See
-[PROVE.md](PROVE.md).
+`--tcp-connect`, not raw `--icmp`/`--tcp` (those need root). httpx
+uses `examples/scope.lab.httpx.yaml` (`adapter: httpx`, SCOPE ports
+`18080`) and an HTTP/1.1 200 lab on those same addresses — bare TCP
+accept is not enough. See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
@@ -154,6 +157,7 @@ python -m covey prove --adapter rustscan
 python -m covey prove --adapter fping
 python -m covey prove --adapter naabu
 python -m covey prove --adapter nping
+python -m covey prove --adapter httpx
 python -m covey export --out out
 # or
 make export
