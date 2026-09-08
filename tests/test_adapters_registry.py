@@ -7,6 +7,7 @@ from covey.adapters import (
     FILE_DROP_IDS,
     FORBIDDEN_LIVE,
     LIVE_ADAPTER_IDS,
+    UNPROVEN_ADAPTERS,
     OpenVASFileDrop,
     adapter_for,
     file_drop_adapter,
@@ -27,6 +28,10 @@ def test_registry_lists_exactly_20_live_ids():
     assert ids[0] == "nmap"
     assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan")
     assert all(name in ids for name in E2E_PROVEN_ADAPTERS)
+    assert UNPROVEN_ADAPTERS == tuple(
+        name for name in ids if name not in E2E_PROVEN_ADAPTERS
+    )
+    assert len(UNPROVEN_ADAPTERS) == 18
 
 
 @pytest.mark.parametrize("name", LIVE_ADAPTER_IDS)

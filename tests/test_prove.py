@@ -1,15 +1,27 @@
 from __future__ import annotations
 
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
-from covey.adapters.registry import E2E_PROVEN_ADAPTERS
+from covey.adapters.registry import (
+    E2E_PROVEN_ADAPTERS,
+    LIVE_ADAPTER_IDS,
+    UNPROVEN_ADAPTERS,
+)
+from covey.cli import main
 from covey.errors import RunnerError
 from covey.export import export_pack
 from covey.prove import run_prove
 from covey.runner import resolve_exec, resolve_nmap
 from covey.scope import load
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+HONESTY_DOCS = (REPO_ROOT / "PROVE.md", REPO_ROOT / "README.md")
 
 
 def test_committed_lab_scope_is_signed_and_tiny():
@@ -37,11 +49,95 @@ def test_committed_rustscan_lab_scope_is_signed_and_tiny():
 
 def test_e2e_proven_adapters_are_nmap_then_rustscan():
     assert E2E_PROVEN_ADAPTERS == ("nmap", "rustscan")
+    assert len(UNPROVEN_ADAPTERS) == 18
+    assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
+    assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
+    assert UNPROVEN_ADAPTERS == tuple(
+        name for name in LIVE_ADAPTER_IDS if name not in E2E_PROVEN_ADAPTERS
+    )
 
 
-def test_prove_refuses_unproven_adapter():
+@pytest.mark.parametrize("name", UNPROVEN_ADAPTERS)
+def test_prove_refuses_unproven_adapter(name: str):
     with pytest.raises(RunnerError, match="argv\\+unit only"):
-        run_prove(adapter="masscan", install_if_missing=False)
+        run_prove(adapter=name, install_if_missing=False)
+
+
+@pytest.mark.parametrize("name", UNPROVEN_ADAPTERS)
+def test_cli_prove_unproven_adapter_fails_closed(name: str, tmp_path: Path, capsys):
+    assert main(["prove", "--adapter", name, "--no-install", "--out", str(tmp_path)]) == 1
+    captured = capsys.readouterr()
+    blob = f"{captured.out}\n{captured.err}"
+    assert "argv+unit only" in blob
+    assert name in blob
+
+
+@pytest.mark.parametrize("name", UNPROVEN_ADAPTERS)
+def test_module_prove_unproven_adapter_fails_closed(name: str, tmp_path: Path):
+    env = os.environ.copy()
+    src = str(REPO_ROOT / "src")
+    env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "covey",
+            "prove",
+            "--adapter",
+            name,
+            "--no-install",
+            "--out",
+            str(tmp_path),
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 1
+    blob = f"{proc.stdout}\n{proc.stderr}"
+    assert "argv+unit only" in blob
+    assert name in blob
+
+
+def test_honesty_docs_follow_e2e_proven_source_of_truth():
+    texts = {path.name: path.read_text(encoding="utf-8") for path in HONESTY_DOCS}
+    for name, text in texts.items():
+        assert "E2E_PROVEN_ADAPTERS" in text, f"{name} must cite E2E_PROVEN_ADAPTERS"
+        assert "argv+unit only" in text, f"{name} must say the other 18 are argv+unit only"
+        lowered = text.lower()
+        assert "do not claim" in lowered and "live" in lowered
+        for proven in E2E_PROVEN_ADAPTERS:
+            assert proven in text
+        for unproven in UNPROVEN_ADAPTERS:
+            # A live-e2e claim would look like a numbered prove row or a
+            # successful `prove --adapter <id>` recipe without fail-closed.
+            assert f"make prove-{unproven}" not in text
+            success = re.search(
+                rf"python(?:3)? -m covey prove --adapter {re.escape(unproven)}(?![^\n]*fail)",
+                text,
+            )
+            if success:
+                window = text[max(0, success.start() - 80) : success.end() + 80]
+                assert "fails closed" in window or "fail closed" in window, (
+                    f"{name} offers live prove for {unproven}"
+                )
+
+    prove = texts["PROVE.md"]
+    for unproven in UNPROVEN_ADAPTERS:
+        assert f"`{unproven}`" in prove, f"PROVE.md must list unproven {unproven}"
+    assert "fails closed" in prove
+    assert "`UNPROVEN_ADAPTERS`" in prove or "UNPROVEN_ADAPTERS" in prove
+    third = re.search(r"^\| 3 \|", prove, re.MULTILINE)
+    assert third is None, "PROVE.md must not add a third live e2e row"
+
+    makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+    assert "prove-rustscan" in makefile
+    for unproven in UNPROVEN_ADAPTERS:
+        assert f"prove-{unproven}" not in makefile, (
+            f"Makefile must not grow a live prove target for {unproven}"
+        )
 
 
 @pytest.mark.integration
