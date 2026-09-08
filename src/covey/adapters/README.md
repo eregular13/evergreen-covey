@@ -113,7 +113,7 @@ BYO only. Resolve from `PATH` / `COVEY_TLSX`, or the prove path may
 download the official GitHub release onto **this VM only**.
 
 - pass1: `-silent -l` tile hosts file `-p <SCOPE ports>`
-- pass2: `-san -cn -so` against pass1-live hosts
+- pass2: `-san -cn` against pass1-live hosts (tlsx 1.4+ refuses `-so` with those)
 - prove serves TLS (TLS handshake ≠ HTTP 200 ≠ bare TCP accept)
 
 `python -m covey prove --adapter tlsx`

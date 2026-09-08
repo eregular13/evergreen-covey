@@ -64,7 +64,8 @@ class TlsxAdapter(LiveAdapter):
 
     def pass2_argv_template(self, out_prefix: str) -> list[str]:
         require_target_prefix(".", out_prefix, name=self.name)
-        return self._argv(out_prefix, extra=["-san", "-cn", "-so"])
+        # tlsx 1.4+ refuses -san/-cn together with other probes (-so).
+        return self._argv(out_prefix, extra=["-san", "-cn"])
 
     def pass2_argv(self, hosts: list[str], out_prefix: str) -> list[str]:
         if not hosts:

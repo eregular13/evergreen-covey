@@ -29,7 +29,7 @@ def test_pass2_is_tlsx_only_against_hosts():
     assert argv[0] == "tlsx"
     assert "-san" in argv
     assert "-cn" in argv
-    assert "-so" in argv
+    assert "-so" not in argv
     assert argv[argv.index("-l") + 1] == "shards/p2-s00/scan.hosts"
     files = TlsxAdapter().stage_files(
         "pass2", "127.0.0.1,127.0.0.5", "shards/p2-s00/scan"

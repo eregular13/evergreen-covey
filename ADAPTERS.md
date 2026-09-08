@@ -7,8 +7,8 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth).** The
 other 12 ids are argv+unit only. Source of truth: `E2E_PROVEN_ADAPTERS`
-in `src/covey/adapters/registry.py`. See [PROVE.md](PROVE.md). Do not
-claim them live.
+in `src/covey/adapters/registry.py`. See [PROVE.md](PROVE.md). Do not claim
+them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
@@ -41,7 +41,7 @@ forbidden.
 | `sslscan` | `sslscan` | TLS probe of the **first usable tile host** as `host:<SCOPE port>` (**7th e2e-proven**) | `--show-certificate` first live host | `Connected to` / XML host (not refused `ERROR`) | `COVEY_SSLSCAN` |
 | `whatweb` | `whatweb` | `-a 1` against expanded tile hosts | `-a 3` on live hosts | `http://ip` brief log | `COVEY_WHATWEB` |
 | `httpx` | `httpx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**6th e2e-proven**) | title/status/tech on live hosts | `http(s)://ip` lines | `COVEY_HTTPX` |
-| `tlsx` | `tlsx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**8th e2e-proven**) | `-san -cn -so` on live hosts | `ip:port` TLS lines | `COVEY_TLSX` |
+| `tlsx` | `tlsx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**8th e2e-proven**) | `-san -cn` on live hosts | `ip:port` TLS lines | `COVEY_TLSX` |
 
 ## Limits (honest)
 

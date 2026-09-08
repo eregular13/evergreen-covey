@@ -58,7 +58,7 @@ All eight proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | nping | `examples/scope.lab.nping.yaml` | `nping --tcp-connect -p 18080` on expanded tile hosts | nping-only on pass1-live hosts |
 | httpx | `examples/scope.lab.httpx.yaml` | `httpx -silent -l` tile hosts file `-p 18080` | title/status/tech on pass1-live hosts |
 | sslscan | `examples/scope.lab.sslscan.yaml` | `sslscan --xml --no-colour` first tile host `:18080` | `--show-certificate` on first pass1-live host |
-| tlsx | `examples/scope.lab.tlsx.yaml` | `tlsx -silent -l` tile hosts file `-p 18080` | `-san -cn -so` on pass1-live hosts |
+| tlsx | `examples/scope.lab.tlsx.yaml` | `tlsx -silent -l` tile hosts file `-p 18080` | `-san -cn` on pass1-live hosts |
 
 rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
