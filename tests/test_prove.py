@@ -247,7 +247,13 @@ def test_sip_lab_replies_200_with_user_agent():
     assert _sip_ok_response(request) != request
 
 
+# Locked remainder after unicornscan (16th). Prove must fail closed for these.
+UNPROVEN_FOUR = ("masscan", "arp-scan", "netdiscover", "zmap")
+
+
 def test_e2e_proven_adapters_are_nmap_through_unicornscan():
+    assert len(E2E_PROVEN_ADAPTERS) == 16
+    assert "unicornscan" in E2E_PROVEN_ADAPTERS
     assert E2E_PROVEN_ADAPTERS == (
         "nmap",
         "rustscan",
@@ -266,6 +272,7 @@ def test_e2e_proven_adapters_are_nmap_through_unicornscan():
         "svmap",
         "unicornscan",
     )
+    assert UNPROVEN_ADAPTERS == UNPROVEN_FOUR
     assert len(UNPROVEN_ADAPTERS) == 4
     assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
     assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
@@ -274,13 +281,13 @@ def test_e2e_proven_adapters_are_nmap_through_unicornscan():
     )
 
 
-@pytest.mark.parametrize("name", UNPROVEN_ADAPTERS)
+@pytest.mark.parametrize("name", UNPROVEN_FOUR)
 def test_prove_refuses_unproven_adapter(name: str):
     with pytest.raises(RunnerError, match="argv\\+unit only"):
         run_prove(adapter=name, install_if_missing=False)
 
 
-@pytest.mark.parametrize("name", UNPROVEN_ADAPTERS)
+@pytest.mark.parametrize("name", UNPROVEN_FOUR)
 def test_cli_prove_unproven_adapter_fails_closed(name: str, tmp_path: Path, capsys):
     assert main(["prove", "--adapter", name, "--no-install", "--out", str(tmp_path)]) == 1
     captured = capsys.readouterr()
@@ -289,7 +296,7 @@ def test_cli_prove_unproven_adapter_fails_closed(name: str, tmp_path: Path, caps
     assert name in blob
 
 
-@pytest.mark.parametrize("name", UNPROVEN_ADAPTERS)
+@pytest.mark.parametrize("name", UNPROVEN_FOUR)
 def test_module_prove_unproven_adapter_fails_closed(name: str, tmp_path: Path):
     env = os.environ.copy()
     src = str(REPO_ROOT / "src")
@@ -342,7 +349,8 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
                 )
 
     prove = texts["PROVE.md"]
-    for unproven in UNPROVEN_ADAPTERS:
+    assert UNPROVEN_ADAPTERS == UNPROVEN_FOUR
+    for unproven in UNPROVEN_FOUR:
         assert f"`{unproven}`" in prove, f"PROVE.md must list unproven {unproven}"
     assert "fails closed" in prove
     assert "`UNPROVEN_ADAPTERS`" in prove or "UNPROVEN_ADAPTERS" in prove
