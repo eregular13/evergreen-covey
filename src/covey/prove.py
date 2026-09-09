@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, or whatweb; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, or hping3; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
 from covey.runner import (
     ensure_fping,
+    ensure_hping3,
     ensure_httpx,
     ensure_naabu,
     ensure_nmap,
@@ -41,6 +42,7 @@ HTTPX_LAB_SCOPE = Path("examples/scope.lab.httpx.yaml")
 SSLSCAN_LAB_SCOPE = Path("examples/scope.lab.sslscan.yaml")
 TLSX_LAB_SCOPE = Path("examples/scope.lab.tlsx.yaml")
 WHATWEB_LAB_SCOPE = Path("examples/scope.lab.whatweb.yaml")
+HPING3_LAB_SCOPE = Path("examples/scope.lab.hping3.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -51,6 +53,7 @@ LAB_SCOPES = {
     "sslscan": SSLSCAN_LAB_SCOPE,
     "tlsx": TLSX_LAB_SCOPE,
     "whatweb": WHATWEB_LAB_SCOPE,
+    "hping3": HPING3_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -70,6 +73,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "sslscan",
         "tlsx",
         "whatweb",
+        "hping3",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -157,10 +161,11 @@ def loopback_lab_listeners(
     """Bind a tiny TCP lab on loopback tiles so port scanners can observe opens.
 
     rustscan, naabu, and nping --tcp-connect are TCP probes (unlike nmap
-    ``-sn``). Without a listener, pass1 finds no live hosts and prove fails
-    closed. This is lab fixture, not a forged scanner result. httpx and
-    whatweb need ``loopback_http_lab`` (HTTP 200). sslscan and tlsx need
-    ``loopback_tls_lab`` (a TLS handshake). Neither is this bare accept.
+    ``-sn``, fping, and hping3 ``--icmp``). Without a listener, pass1 finds
+    no live hosts and prove fails closed. This is lab fixture, not a
+    forged scanner result. httpx and whatweb need ``loopback_http_lab``
+    (HTTP 200). sslscan and tlsx need ``loopback_tls_lab`` (a TLS
+    handshake). Neither is this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -355,6 +360,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_tlsx(install_if_missing=install_if_missing)
     if name == "whatweb":
         return ensure_whatweb(install_if_missing=install_if_missing)
+    if name == "hping3":
+        return ensure_hping3(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"

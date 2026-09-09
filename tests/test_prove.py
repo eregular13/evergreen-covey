@@ -135,7 +135,19 @@ def test_committed_whatweb_lab_scope_is_signed_and_tiny():
     assert scope.deepen.ports == "18080"
 
 
-def test_e2e_proven_adapters_are_nmap_rustscan_fping_naabu_nping_httpx_sslscan_tlsx_whatweb():
+def test_committed_hping3_lab_scope_is_signed_and_tiny():
+    scope = load(Path("examples/scope.lab.hping3.yaml"))
+    assert scope.demo is True
+    assert scope.adapter == "hping3"
+    assert scope.max_workers <= 4
+    cidrs = [t.listed for t in scope.targets]
+    assert cidrs == ["127.0.0.0/28"]
+    assert all(not c.endswith("/8") for c in cidrs)
+    assert "0.0.0.0/0" not in cidrs
+    assert scope.deepen.ports is None
+
+
+def test_e2e_proven_adapters_are_nmap_rustscan_fping_naabu_nping_httpx_sslscan_tlsx_whatweb_hping3():
     assert E2E_PROVEN_ADAPTERS == (
         "nmap",
         "rustscan",
@@ -146,8 +158,9 @@ def test_e2e_proven_adapters_are_nmap_rustscan_fping_naabu_nping_httpx_sslscan_t
         "sslscan",
         "tlsx",
         "whatweb",
+        "hping3",
     )
-    assert len(UNPROVEN_ADAPTERS) == 11
+    assert len(UNPROVEN_ADAPTERS) == 10
     assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
     assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
     assert UNPROVEN_ADAPTERS == tuple(
@@ -234,8 +247,9 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert re.search(r"^\| 7 \| `sslscan`", prove, re.MULTILINE)
     assert re.search(r"^\| 8 \| `tlsx`", prove, re.MULTILINE)
     assert re.search(r"^\| 9 \| `whatweb`", prove, re.MULTILINE)
-    tenth = re.search(r"^\| 10 \|", prove, re.MULTILINE)
-    assert tenth is None, "PROVE.md must not add a tenth live e2e row"
+    assert re.search(r"^\| 10 \| `hping3`", prove, re.MULTILINE)
+    eleventh = re.search(r"^\| 11 \|", prove, re.MULTILINE)
+    assert eleventh is None, "PROVE.md must not add an eleventh live e2e row"
 
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "prove-rustscan" in makefile
@@ -246,6 +260,7 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert "prove-sslscan" in makefile
     assert "prove-tlsx" in makefile
     assert "prove-whatweb" in makefile
+    assert "prove-hping3" in makefile
     for unproven in UNPROVEN_ADAPTERS:
         assert f"prove-{unproven}" not in makefile, (
             f"Makefile must not grow a live prove target for {unproven}"
@@ -509,3 +524,32 @@ def test_prove_invokes_byo_whatweb(tmp_path: Path):
         argv = path.read_text(encoding="utf-8")
         assert "whatweb" in argv.lower()
         assert "18080" in argv
+
+
+@pytest.mark.integration
+def test_prove_invokes_byo_hping3(tmp_path: Path):
+    try:
+        resolve_exec("hping3")
+    except Exception:
+        pytest.skip("BYO hping3 not available")
+    summary = run_prove(
+        out_root=tmp_path, adapter="hping3", install_if_missing=False
+    )
+    assert summary["ok"] is True
+    assert summary["adapter"] == "hping3"
+    assert len(summary["shards"]) >= 2
+    assert summary["pass1_workers"] >= 2
+    assert summary["pass2_ran"] >= 1
+    assert summary["live_hosts"]
+    assert all(h.startswith("127.0.0.") for h in summary["live_hosts"])
+    argv_files = list(tmp_path.glob("shards/p1-*/argv.json"))
+    assert len(argv_files) >= 2
+    stdout_files = list(tmp_path.glob("shards/p1-*/stdout.log"))
+    assert len(stdout_files) >= 2
+    greppable = "\n".join(p.read_text(encoding="utf-8") for p in stdout_files)
+    assert "ip=" in greppable
+    assert "127.0.0." in greppable
+    for path in argv_files:
+        argv = path.read_text(encoding="utf-8")
+        assert "hping3" in argv.lower()
+        assert "--icmp" in argv

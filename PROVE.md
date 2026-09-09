@@ -1,6 +1,6 @@
 # Evergreen Covey — prove honesty
 
-Covey has **20** live adapter ids (argv + unit parse). Only **nine** have
+Covey has **20** live adapter ids (argv + unit parse). Only **ten** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.
 
@@ -15,17 +15,18 @@ binary against a signed loopback lab.
 | 7 | `sslscan` | `python -m covey prove --adapter sslscan` / `make prove-sslscan` | `out/shards/*/stdout.log` + `argv.json` |
 | 8 | `tlsx` | `python -m covey prove --adapter tlsx` / `make prove-tlsx` | `out/shards/*/stdout.log` + `argv.json` |
 | 9 | `whatweb` | `python -m covey prove --adapter whatweb` / `make prove-whatweb` | `out/shards/*/stdout.log` + `argv.json` |
+| 10 | `hping3` | `python -m covey prove --adapter hping3` / `make prove-hping3` | `out/shards/*/stdout.log` + `argv.json` |
 
-The other **11** (`masscan`, `arp-scan`, `netdiscover`,
-`zmap`, `unicornscan`, `hping3`, `ike-scan`, `nbtscan`,
+The other **10** (`masscan`, `arp-scan`, `netdiscover`,
+`zmap`, `unicornscan`, `ike-scan`, `nbtscan`,
 `onesixtyone`, `braa`, `svmap`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
 Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
-(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`). `UNPROVEN_ADAPTERS` is the derived remainder.
-Adding a tenth live e2e requires a real BYO prove — not a docs edit.
+(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`). `UNPROVEN_ADAPTERS` is the derived remainder.
+Adding an eleventh live e2e requires a real BYO prove — not a docs edit.
 
-`python -m covey prove --adapter masscan` (or any of the 11, with or
+`python -m covey prove --adapter masscan` (or any of the 10, with or
 without `--no-install`) **fails closed**.
 
 masscan was preferred earlier. `apt-get install masscan` resolves
@@ -43,12 +44,17 @@ bare TCP accept. Prove serves TLS on the loopback tiles. The eighth
 brick is **tlsx**: same TLS handshake requirement as sslscan. Prove
 reuses that TLS lab. The ninth brick is **whatweb**: it needs an HTTP
 200, not a bare TCP accept. Prove reuses the httpx HTTP lab.
+The tenth brick is **hping3**: raw `--icmp` / `--syn` need
+`CAP_NET_RAW` (or root). Prove may `apt-get install hping3` and
+`setcap` on this VM only. pass1 is ICMP to the first usable host of
+each loopback tile — loopback answers; no TCP listener. The HPING
+banner is not a live host; parse requires `ip=` reply lines.
 arp-scan stays argv+unit (no L2 / loopback ARP). masscan stays
 argv+unit until a non-loopback raw-SYN prove.
 
 ## Lab SCOPE
 
-All nine proven paths tile loopback `127.0.0.0/28` into four `/30`s with
+All ten proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 `max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
@@ -62,6 +68,7 @@ All nine proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | sslscan | `examples/scope.lab.sslscan.yaml` | `sslscan --xml --no-colour` first tile host `:18080` | `--show-certificate` on first pass1-live host |
 | tlsx | `examples/scope.lab.tlsx.yaml` | `tlsx -silent -l` tile hosts file `-p 18080` | `-san -cn` on pass1-live hosts |
 | whatweb | `examples/scope.lab.whatweb.yaml` | `whatweb -a 1` `http://host:18080` tile hosts | `-a 3` on pass1-live host URLs |
+| hping3 | `examples/scope.lab.hping3.yaml` | `hping3 --icmp` first usable tile host | `--syn` first pass1-live host |
 
 rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
@@ -102,6 +109,13 @@ fping is ICMP host discovery. Loopback answers; no TCP listener is
 required. The committed fping SCOPE omits `pass2.ports` — there is no
 port surface.
 
+hping3 is ICMP host discovery on pass1 (single destination). Loopback
+answers; no TCP listener is required. The committed hping3 SCOPE omits
+`pass2.ports` — pass2 SYN uses the adapter default (`80`). hping3
+itself must still send ICMP and print `ip=` reply lines. The HPING
+banner names the destination even on 100% loss; that is not a live
+host. SYN RST still prints `ip=` because a reply arrived.
+
 ## BYO binaries
 
 Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
@@ -122,6 +136,9 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
   into `~/.local/bin` (or `go install`) on this VM only
 - **whatweb**: `PATH` / `COVEY_WHATWEB` / optional `apt-get install whatweb`
   on this VM only
+- **hping3**: `PATH` / `COVEY_HPING3` / optional `apt-get install hping3`
+  on this VM only, plus `setcap cap_net_raw,cap_net_admin+ep` when the
+  binary cannot open a raw socket unprivileged
 
 `--no-install` fails closed if the binary is missing.
 
@@ -129,7 +146,7 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
 
 Prove exits non-zero when:
 
-- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, or whatweb
+- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, or hping3
 - SCOPE is unsigned, expired, or a wide spray
 - the BYO binary cannot be resolved or will not run
 - pass1 workers fail, artifacts are missing, no live hosts, or pass2
