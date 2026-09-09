@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -94,6 +94,12 @@ prove-onesixtyone: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-nbtscan: venv
 	$(PY) -m covey prove --adapter nbtscan --out out/nbtscan
+
+# Thirteenth e2e-proven adapter. BYO braa (apt on this VM only).
+# Needs an SNMPv1 GetResponse lab that echoes request-id, not a UDP echo.
+# Does not replace `make prove` (nmap stays the default).
+prove-braa: venv
+	$(PY) -m covey prove --adapter braa --out out/braa
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

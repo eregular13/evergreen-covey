@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, or nbtscan; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, or braa; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from covey.adapters.registry import E2E_PROVEN_ADAPTERS, adapter_for
 from covey.errors import CoveyError, RunnerError
 from covey.plan import build_plan
 from covey.runner import (
+    ensure_braa,
     ensure_fping,
     ensure_hping3,
     ensure_httpx,
@@ -48,6 +49,7 @@ WHATWEB_LAB_SCOPE = Path("examples/scope.lab.whatweb.yaml")
 HPING3_LAB_SCOPE = Path("examples/scope.lab.hping3.yaml")
 ONESIXTYONE_LAB_SCOPE = Path("examples/scope.lab.onesixtyone.yaml")
 NBTSCAN_LAB_SCOPE = Path("examples/scope.lab.nbtscan.yaml")
+BRAA_LAB_SCOPE = Path("examples/scope.lab.braa.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -61,6 +63,7 @@ LAB_SCOPES = {
     "hping3": HPING3_LAB_SCOPE,
     "onesixtyone": ONESIXTYONE_LAB_SCOPE,
     "nbtscan": NBTSCAN_LAB_SCOPE,
+    "braa": BRAA_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -83,6 +86,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "hping3",
         "onesixtyone",
         "nbtscan",
+        "braa",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -174,9 +178,9 @@ def loopback_lab_listeners(
     no live hosts and prove fails closed. This is lab fixture, not a
     forged scanner result. httpx and whatweb need ``loopback_http_lab``
     (HTTP 200). sslscan and tlsx need ``loopback_tls_lab`` (a TLS
-    handshake). onesixtyone needs ``loopback_snmp_lab`` (an SNMPv1
-    GetResponse). nbtscan needs ``loopback_nbstat_lab`` (a NetBIOS
-    name table on UDP/137). Neither is this bare accept.
+    handshake). onesixtyone and braa need ``loopback_snmp_lab`` (an
+    SNMPv1 GetResponse). nbtscan needs ``loopback_nbstat_lab`` (a
+    NetBIOS name table on UDP/137). Neither is this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -351,6 +355,91 @@ def loopback_tls_lab(
                     pass
 
 
+def _ber_put(tag: int, value: bytes) -> bytes:
+    if len(value) > 127:
+        raise RunnerError("SNMP lab BER length overflow")
+    return bytes([tag, len(value)]) + value
+
+
+def _ber_take(buf: bytes, index: int) -> tuple[int, bytes, int]:
+    if index + 1 >= len(buf):
+        raise ValueError("truncated BER")
+    tag = buf[index]
+    length = buf[index + 1]
+    if length & 0x80:
+        raise ValueError("long-form BER")
+    start = index + 2
+    end = start + length
+    if end > len(buf):
+        raise ValueError("truncated BER value")
+    return tag, buf[start:end], end
+
+
+def _snmp_response_request_id(rid: bytes) -> bytes:
+    """Echo a request-id braa can dispatch; keep onesixtyone decodable.
+
+    braa matches request-id. onesixtyone treats a 4-byte 0xffffffff
+    (negative INTEGER) as parse failure. Replace high-bit / all-ff ids
+    with a one-byte positive 1.
+    """
+    if not rid or rid[0] & 0x80 or rid == b"\xff\xff\xff\xff":
+        return b"\x01"
+    return rid
+
+
+def _snmpv1_parse(request: bytes) -> dict[str, bytes] | None:
+    try:
+        if not request or request[0] != 0x30:
+            return None
+        _, inner, _ = _ber_take(request, 0)
+        index = 0
+        tag, version, index = _ber_take(inner, index)
+        if tag != 0x02:
+            return None
+        tag, community, index = _ber_take(inner, index)
+        if tag != 0x04 or not community:
+            return None
+        _pdu_tag, pdu, _ = _ber_take(inner, index)
+        cursor = 0
+        tag, rid, cursor = _ber_take(pdu, cursor)
+        if tag != 0x02 or not rid:
+            return None
+        tag, _estat, cursor = _ber_take(pdu, cursor)
+        tag, _eidx, cursor = _ber_take(pdu, cursor)
+        tag, vblist, cursor = _ber_take(pdu, cursor)
+        if tag != 0x30:
+            return None
+        tag, varbind, _ = _ber_take(vblist, 0)
+        if tag != 0x30:
+            return None
+        tag, oid, _ = _ber_take(varbind, 0)
+        if tag != 0x06 or not oid:
+            return None
+        return {
+            "version": version,
+            "community": community,
+            "request_id": rid,
+            "oid": oid,
+        }
+    except (ValueError, IndexError, TypeError):
+        return None
+
+
+def _snmpv1_echo_response(parsed: dict[str, bytes], descr: bytes) -> bytes:
+    oid = _ber_put(0x06, parsed["oid"])
+    value = _ber_put(0x04, descr)
+    varbind = _ber_put(0x30, oid + value)
+    vblist = _ber_put(0x30, varbind)
+    rid = _ber_put(0x02, _snmp_response_request_id(parsed["request_id"]))
+    pdu = _ber_put(
+        0xA2,
+        rid + _ber_put(0x02, b"\x00") + _ber_put(0x02, b"\x00") + vblist,
+    )
+    version = parsed["version"] or b"\x00"
+    body = _ber_put(0x02, version) + _ber_put(0x04, parsed["community"]) + pdu
+    return _ber_put(0x30, body)
+
+
 def _snmpv1_get_response(community: bytes, descr: bytes) -> bytes:
     """Minimal SNMPv1 GetResponse onesixtyone can decode.
 
@@ -394,11 +483,13 @@ def loopback_snmp_lab(
     hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
     port: int = RUSTSCAN_LAB_PORT,
 ) -> Iterator[tuple[str, int]]:
-    """Serve SNMPv1 GetResponse on loopback tiles so onesixtyone can observe communities.
+    """Serve SNMPv1 GetResponse on loopback tiles so onesixtyone/braa can observe.
 
     A UDP echo is not enough: onesixtyone prints the source IP on any
     datagram, but ``ip [community] sysDescr`` only after a GetResponse
-    decode. This is lab fixture, not a forged scanner result.
+    decode. braa needs the request-id echoed or it prints
+    ``Message cannot be dispatched!``. This is lab fixture, not a
+    forged scanner result.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -411,11 +502,16 @@ def loopback_snmp_lab(
                 continue
             except OSError:
                 break
-            community = _snmpv1_community(data)
-            if not community:
-                continue
+            parsed = _snmpv1_parse(data)
+            if parsed:
+                reply = _snmpv1_echo_response(parsed, b"covey-snmp-lab")
+            else:
+                community = _snmpv1_community(data)
+                if not community:
+                    continue
+                reply = _snmpv1_get_response(community, b"covey-snmp-lab")
             try:
-                sock.sendto(_snmpv1_get_response(community, b"covey-snmp-lab"), addr)
+                sock.sendto(reply, addr)
             except OSError:
                 break
 
@@ -604,6 +700,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_onesixtyone(install_if_missing=install_if_missing)
     if name == "nbtscan":
         return ensure_nbtscan(install_if_missing=install_if_missing)
+    if name == "braa":
+        return ensure_braa(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -662,7 +760,7 @@ def run_prove(
     elif plugin.name in {"sslscan", "tlsx"}:
         with loopback_tls_lab(port=_lab_port(scope)):
             report = _execute()
-    elif plugin.name == "onesixtyone":
+    elif plugin.name in {"onesixtyone", "braa"}:
         with loopback_snmp_lab(port=_lab_port(scope)):
             report = _execute()
     elif plugin.name == "nbtscan":

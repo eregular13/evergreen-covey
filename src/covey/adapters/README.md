@@ -167,10 +167,23 @@ may `apt-get install nbtscan` onto **this VM only**.
 
 `python -m covey prove --adapter nbtscan`
 
+## braa (thirteenth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_BRAA`, or the prove path
+may `apt-get install braa` onto **this VM only**.
+
+- pass1: one `public@host:<SCOPE port>:sysDescr` query per usable tile host
+- pass2: sysDescr + sysName against pass1-live hosts
+- prove serves SNMPv1 GetResponse and echoes the request-id
+  (SNMP probe ≠ UDP echo; mismatched request-id is not live)
+- parse requires `ip:oid:value` / `ip:rtt:id:value`
+
+`python -m covey prove --adapter braa`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-ike-scan, braa, svmap
+ike-scan, svmap
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 
