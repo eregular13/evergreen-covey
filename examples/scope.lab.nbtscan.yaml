@@ -1,0 +1,26 @@
+# Evergreen Covey — signed demo SCOPE for the nbtscan loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. nbtscan is a NetBIOS name sweeper on UDP/137, so prove
+# serves NBSTAT (node status) on the first usable host of each /30.
+# A UDP echo is not enough — nbtscan prints the source IP on any
+# datagram as ip:<unknown>; parse requires a real NetBIOS name.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey nbtscan loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: nbtscan
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+targets:
+- cidr: 127.0.0.0/28
+signature: 97fae4d63015b61944e683253c00ed5cdcd5f71b35897b81177724b4669060fd

@@ -1,6 +1,6 @@
 # Evergreen Covey — prove honesty
 
-Covey has **20** live adapter ids (argv + unit parse). Only **eleven** have
+Covey has **20** live adapter ids (argv + unit parse). Only **twelve** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.
 
@@ -17,17 +17,18 @@ binary against a signed loopback lab.
 | 9 | `whatweb` | `python -m covey prove --adapter whatweb` / `make prove-whatweb` | `out/shards/*/stdout.log` + `argv.json` |
 | 10 | `hping3` | `python -m covey prove --adapter hping3` / `make prove-hping3` | `out/shards/*/stdout.log` + `argv.json` |
 | 11 | `onesixtyone` | `python -m covey prove --adapter onesixtyone` / `make prove-onesixtyone` | `out/shards/*/stdout.log` + `argv.json` |
+| 12 | `nbtscan` | `python -m covey prove --adapter nbtscan` / `make prove-nbtscan` | `out/shards/*/stdout.log` + `argv.json` |
 
-The other **9** (`masscan`, `arp-scan`, `netdiscover`,
-`zmap`, `unicornscan`, `ike-scan`, `nbtscan`,
+The other **8** (`masscan`, `arp-scan`, `netdiscover`,
+`zmap`, `unicornscan`, `ike-scan`,
 `braa`, `svmap`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
 Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
-(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`). `UNPROVEN_ADAPTERS` is the derived remainder.
-Adding a twelfth live e2e requires a real BYO prove — not a docs edit.
+(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`). `UNPROVEN_ADAPTERS` is the derived remainder.
+Adding a thirteenth live e2e requires a real BYO prove — not a docs edit.
 
-`python -m covey prove --adapter masscan` (or any of the 9, with or
+`python -m covey prove --adapter masscan` (or any of the 8, with or
 without `--no-install`) **fails closed**.
 
 masscan was preferred earlier. `apt-get install masscan` resolves
@@ -54,14 +55,20 @@ The eleventh brick is **onesixtyone**: SNMP community sweep. Prove
 serves SNMPv1 GetResponse on the loopback tiles. A UDP echo is not
 enough — onesixtyone prints the source IP on any datagram; parse
 requires `ip [community] sysDescr`. Decode-error lines and the hosts
-sidecar are not live hosts. nbtscan / braa / arp-scan were not
-selected: onesixtyone was first in the try order and produced honest
-loopback output. arp-scan stays argv+unit (no L2 / loopback ARP).
-masscan stays argv+unit until a non-loopback raw-SYN prove.
+sidecar are not live hosts.
+The twelfth brick is **nbtscan**: NetBIOS name sweep. Prove serves
+NBSTAT on UDP/137 on the loopback tiles. A UDP echo is not enough —
+nbtscan prints `ip:<unknown>` on any datagram; parse requires a real
+name-table entry. MAC sidecar lines are not live hosts. UDP/137 is
+privileged; prove may lower `ip_unprivileged_port_start` on this VM
+only. braa / arp-scan were not selected: nbtscan was first in the try
+order and produced honest loopback output. arp-scan stays argv+unit
+(no L2 / loopback ARP). masscan stays argv+unit until a non-loopback
+raw-SYN prove.
 
 ## Lab SCOPE
 
-All eleven proven paths tile loopback `127.0.0.0/28` into four `/30`s with
+All twelve proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 `max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
@@ -77,6 +84,7 @@ All eleven proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | whatweb | `examples/scope.lab.whatweb.yaml` | `whatweb -a 1` `http://host:18080` tile hosts | `-a 3` on pass1-live host URLs |
 | hping3 | `examples/scope.lab.hping3.yaml` | `hping3 --icmp` first usable tile host | `--syn` first pass1-live host |
 | onesixtyone | `examples/scope.lab.onesixtyone.yaml` | `onesixtyone -c/-i` tile hosts `-p 18080` | extra communities on pass1-live hosts |
+| nbtscan | `examples/scope.lab.nbtscan.yaml` | `nbtscan -s :` tile CIDR (NBSTAT on UDP/137) | `-v` on pass1-live hosts |
 
 rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
@@ -132,6 +140,16 @@ httpx bind. onesixtyone itself must still send a GET and print
 are not live hosts. The hosts sidecar IPs are not live hosts. Pass1
 uses SCOPE `pass2.ports` (lab default `18080`) via `-p`.
 
+nbtscan is a **NetBIOS name sweeper**. A UDP echo is not enough:
+nbtscan prints the source IP on any datagram as `ip:<unknown>`. Prove
+serves NBSTAT on UDP/137 on the same loopback addresses rustscan /
+naabu / nping / httpx bind. nbtscan itself must still send a node-status
+query and print a real name-table line (`ip:COVEYLAB…`). Echo
+`ip:<unknown>` lines, MAC sidecar lines, and the scan banner are not
+live hosts. The committed nbtscan SCOPE omits `pass2.ports` — there is
+no TCP port surface. UDP/137 is privileged; prove may lower
+`ip_unprivileged_port_start` on this VM only.
+
 ## BYO binaries
 
 Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
@@ -157,6 +175,8 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
   binary cannot open a raw socket unprivileged
 - **onesixtyone**: `PATH` / `COVEY_ONESIXTYONE` / optional
   `apt-get install onesixtyone` on this VM only
+- **nbtscan**: `PATH` / `COVEY_NBTSCAN` / optional
+  `apt-get install nbtscan` on this VM only
 
 `--no-install` fails closed if the binary is missing.
 
@@ -164,7 +184,7 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
 
 Prove exits non-zero when:
 
-- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, or onesixtyone
+- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, or nbtscan
 - SCOPE is unsigned, expired, or a wide spray
 - the BYO binary cannot be resolved or will not run
 - pass1 workers fail, artifacts are missing, no live hosts, or pass2
