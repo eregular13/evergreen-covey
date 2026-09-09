@@ -7,8 +7,9 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
 `whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh),
-`nbtscan` (twelfth), `braa` (thirteenth).** The
-other 7 ids are argv+unit only. Source of
+`nbtscan` (twelfth), `braa` (thirteenth), `ike-scan`
+(fourteenth).** The
+other 6 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
@@ -16,7 +17,8 @@ The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
 (GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
 whatweb (apt), hping3 (apt + `setcap` for raw sockets), onesixtyone
-(apt), nbtscan (apt), or braa (apt) **on that machine only** — never into git.
+(apt), nbtscan (apt), braa (apt), or ike-scan (apt) **on that machine
+only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -36,7 +38,7 @@ forbidden.
 | `unicornscan` | `unicornscan` | `-mT <cidr>:80,443` | `-mT host:22,80,443,3389` | `TCP open a.b.c.d:port` | `COVEY_UNICORNSCAN` |
 | `nping` | `nping` | `--tcp-connect -p <SCOPE ports>` tile hosts (**5th e2e-proven**) | `--tcp-connect` live hosts | `Handshake with ip:port completed` (not refused `RCVD`) | `COVEY_NPING` |
 | `hping3` | `hping3` | `--icmp` first usable tile host (**10th e2e-proven**) | `--syn -p <SCOPE port or 80>` first live host | `ip=` reply lines (not HPING banner) | `COVEY_HPING3` |
-| `ike-scan` | `ike-scan` | IKE Main Mode on the CIDR | `--aggressive --id=vpn` hosts | handshake IPv4 | `COVEY_IKE_SCAN` |
+| `ike-scan` | `ike-scan` | `--sport=0 --dport <SCOPE port>` Main Mode on the CIDR (**14th e2e-proven**) | `--aggressive --id=vpn` hosts | `Handshake returned` with nonzero CKY-R (not self-echo `CKY-R=0` / notify) | `COVEY_IKE_SCAN` |
 | `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR (**12th e2e-proven**) | `-v` on live hosts | leading IPv4 / name table (not UDP-echo `ip:<unknown>` / MAC) | `COVEY_NBTSCAN` |
 | `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file `-p <SCOPE port>` (**11th e2e-proven**) | extra communities on live hosts | `ip [community] sysDescr` (not UDP-echo IP / decode error) | `COVEY_ONESIXTYONE` |
 | `braa` | `braa` | `public@host:SCOPE-port:sysDescr` per usable tile host (**13th e2e-proven**) | sysDescr + sysName per host | `ip:oid:value` / `ip:rtt:id:value` (not dispatch-error IP) | `COVEY_BRAA` |
@@ -99,6 +101,23 @@ forbidden.
   loopback first-last ranges. Pass1 uses SCOPE `pass2.ports` (lab
   default `18080`). Default SNMP port is `161` when SCOPE omits the
   field.
+- **ike-scan**: IKE handshake sweeper. Fourteenth e2e-proven adapter
+  (`python -m covey prove --adapter ike-scan` / `make prove-ike-scan`).
+  Prove serves ISAKMP on the same loopback addresses rustscan / naabu /
+  nping / httpx bind, copies the initiator cookie, and sets responder
+  cookie `COVEYLAB`. A UDP echo is not enough: ike-scan prints
+  `Handshake returned` on its own initiator packet when CKY-R stays
+  zero (including sport==dport self-echo on loopback). Parse requires
+  `Handshake returned` with a nonzero CKY-R. Notify and malformed
+  lines name the IP but are not live hosts. `--sport=0` stays
+  unprivileged and avoids that self-echo. Pass1 uses SCOPE
+  `pass2.ports` (lab default `18080`) via `--dport`. Default IKE port
+  is `500` when SCOPE omits the field.
+- **arp-scan** / **netdiscover**: L2 ARP. Loopback is
+  `ARPHRD_LOOPBACK` (no MAC). `arp-scan -I lo` fails closed with
+  `Could not obtain MAC address for interface lo`. `netdiscover -i lo`
+  prints `not an Ethernet interface`. No L2 path — they stay
+  argv+unit. Covey does not invent a TAP/veth brick.
 - **onesixtyone** / **httpx** / **tlsx**: the runner writes `{out_prefix}.hosts`
   (and `.comm` for onesixtyone) next to artifacts before spawn. argv still
   invokes only that tool.
@@ -147,7 +166,7 @@ forbidden.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
-  (zmap, nping, hping3, sslscan, whatweb, onesixtyone, braa) use the first listed port.
+  (zmap, nping, hping3, sslscan, whatweb, onesixtyone, braa, ike-scan) use the first listed port.
 
 ## Resolution
 

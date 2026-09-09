@@ -1,6 +1,6 @@
 # Evergreen Covey — prove honesty
 
-Covey has **20** live adapter ids (argv + unit parse). Only **thirteen** have
+Covey has **20** live adapter ids (argv + unit parse). Only **fourteen** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.
 
@@ -19,17 +19,18 @@ binary against a signed loopback lab.
 | 11 | `onesixtyone` | `python -m covey prove --adapter onesixtyone` / `make prove-onesixtyone` | `out/shards/*/stdout.log` + `argv.json` |
 | 12 | `nbtscan` | `python -m covey prove --adapter nbtscan` / `make prove-nbtscan` | `out/shards/*/stdout.log` + `argv.json` |
 | 13 | `braa` | `python -m covey prove --adapter braa` / `make prove-braa` | `out/shards/*/stdout.log` + `argv.json` |
+| 14 | `ike-scan` | `python -m covey prove --adapter ike-scan` / `make prove-ike-scan` | `out/shards/*/stdout.log` + `argv.json` |
 
-The other **7** (`masscan`, `arp-scan`, `netdiscover`,
-`zmap`, `unicornscan`, `ike-scan`,
+The other **6** (`masscan`, `arp-scan`, `netdiscover`,
+`zmap`, `unicornscan`,
 `svmap`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
 Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
-(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`, `braa`). `UNPROVEN_ADAPTERS` is the derived remainder.
-Adding a fourteenth live e2e requires a real BYO prove — not a docs edit.
+(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`, `braa`, `ike-scan`). `UNPROVEN_ADAPTERS` is the derived remainder.
+Adding a fifteenth live e2e requires a real BYO prove — not a docs edit.
 
-`python -m covey prove --adapter masscan` (or any of the 7, with or
+`python -m covey prove --adapter masscan` (or any of the 6, with or
 without `--no-install`) **fails closed**.
 
 masscan was preferred earlier. `apt-get install masscan` resolves
@@ -68,14 +69,24 @@ A UDP echo is not enough — braa prints nothing on timeout, and a
 mismatched request-id yields `Message cannot be dispatched!` (the IP
 is not a live host). Parse requires `ip:oid:value` or
 `ip:rtt:id:value`. pass1 is one query per usable tile host; braa 0.82
-rejects some loopback first-last ranges. arp-scan was not selected:
-braa was first in the try order and produced honest loopback output.
-arp-scan stays argv+unit (no L2 / loopback ARP). masscan stays
-argv+unit until a non-loopback raw-SYN prove.
+rejects some loopback first-last ranges. The fourteenth brick is
+**ike-scan**: IKE Main Mode sweep. Prove serves ISAKMP on the
+loopback tiles, copies the initiator cookie, and sets responder
+cookie `COVEYLAB`. A UDP echo is not enough — ike-scan prints
+`Handshake returned` on its own initiator packet when CKY-R stays
+zero (including sport==dport self-echo on loopback). Parse requires
+`Handshake returned` with a nonzero CKY-R. `--sport=0` stays
+unprivileged and avoids that self-echo. arp-scan was preferred
+first: `arp-scan -I lo` fails with `Could not obtain MAC address
+for interface lo` (loopback is `ARPHRD_LOOPBACK`, no L2). That is
+not a live prove. Covey does not invent a TAP/veth brick.
+netdiscover on `lo` prints `not an Ethernet interface` for the
+same reason. masscan stays argv+unit until a non-loopback raw-SYN
+prove.
 
 ## Lab SCOPE
 
-All thirteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
+All fourteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 `max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
@@ -93,6 +104,7 @@ All thirteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | onesixtyone | `examples/scope.lab.onesixtyone.yaml` | `onesixtyone -c/-i` tile hosts `-p 18080` | extra communities on pass1-live hosts |
 | nbtscan | `examples/scope.lab.nbtscan.yaml` | `nbtscan -s :` tile CIDR (NBSTAT on UDP/137) | `-v` on pass1-live hosts |
 | braa | `examples/scope.lab.braa.yaml` | `braa public@host:18080:sysDescr` per usable tile host | sysDescr + sysName on pass1-live hosts |
+| ike-scan | `examples/scope.lab.ike-scan.yaml` | `ike-scan --sport=0 --dport=18080` tile CIDR (Main Mode) | `--aggressive --id=vpn` on pass1-live hosts |
 
 rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
@@ -168,6 +180,18 @@ one query per usable tile host — braa 0.82 rejects some loopback
 first-last ranges. Pass1 uses SCOPE `pass2.ports` (lab default
 `18080`).
 
+ike-scan is an **IKE handshake sweeper**. A UDP echo is not
+enough: ike-scan prints `Handshake returned` on its own initiator
+packet when CKY-R stays zero. Prove serves ISAKMP on the same
+loopback addresses rustscan / naabu / nping / httpx bind, copies
+the initiator cookie, and sets responder cookie `COVEYLAB`.
+ike-scan itself must still send Main Mode and print
+`Handshake returned` with a nonzero CKY-R. Notify and malformed
+lines name the IP but are not live hosts. `--sport=0` stays
+unprivileged and avoids the loopback self-echo that happens when
+sport==dport. Pass1 uses SCOPE `pass2.ports` (lab default
+`18080`) via `--dport`.
+
 ## BYO binaries
 
 Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
@@ -197,6 +221,8 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
   `apt-get install nbtscan` on this VM only
 - **braa**: `PATH` / `COVEY_BRAA` / optional
   `apt-get install braa` on this VM only
+- **ike-scan**: `PATH` / `COVEY_IKE_SCAN` / optional
+  `apt-get install ike-scan` on this VM only
 
 `--no-install` fails closed if the binary is missing.
 
@@ -204,7 +230,7 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
 
 Prove exits non-zero when:
 
-- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, or braa
+- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, or ike-scan
 - SCOPE is unsigned, expired, or a wide spray
 - the BYO binary cannot be resolved or will not run
 - pass1 workers fail, artifacts are missing, no live hosts, or pass2

@@ -784,6 +784,37 @@ def ensure_braa(*, install_if_missing: bool = False) -> ExecSpec:
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="braa")
 
 
+def ensure_ike_scan(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO ike-scan. Optionally apt-install onto this VM only."""
+    try:
+        return resolve_exec("ike-scan")
+    except RunnerError:
+        if not install_if_missing:
+            raise
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install ike-scan: apt-get not available")
+    update = subprocess.run(
+        ["sudo", "apt-get", "update"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if update.returncode != 0:
+        raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+    install = subprocess.run(
+        ["sudo", "apt-get", "install", "-y", "ike-scan"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        raise RunnerError(f"apt-get install ike-scan failed: {install.stderr[-400:]}")
+    found = shutil.which("ike-scan")
+    if not found:
+        raise RunnerError("ike-scan installed but still not on PATH")
+    return ExecSpec(kind="local", binary=found, display=found, entrypoint="ike-scan")
+
+
 def _hping3_path() -> str | None:
     found = shutil.which("hping3")
     if found:

@@ -44,6 +44,7 @@ E2E_PROVEN_ADAPTERS: tuple[str, ...] = (
     "onesixtyone",
     "nbtscan",
     "braa",
+    "ike-scan",
 )
 
 # Authoritative live adapter ids (SCOPE adapter: field). Order is stable.
@@ -70,7 +71,7 @@ LIVE_ADAPTER_IDS: tuple[str, ...] = (
     "tlsx",
 )
 
-# Derived: the 7 that must fail closed on prove. Do not add a fourteenth e2e
+# Derived: the 6 that must fail closed on prove. Do not add a fifteenth e2e
 # by editing docs — append to E2E_PROVEN_ADAPTERS only after a real prove.
 UNPROVEN_ADAPTERS: tuple[str, ...] = tuple(
     name for name in LIVE_ADAPTER_IDS if name not in E2E_PROVEN_ADAPTERS

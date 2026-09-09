@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -100,6 +100,12 @@ prove-nbtscan: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-braa: venv
 	$(PY) -m covey prove --adapter braa --out out/braa
+
+# Fourteenth e2e-proven adapter. BYO ike-scan (apt on this VM only).
+# Needs an ISAKMP lab that sets a nonzero responder cookie, not a UDP echo.
+# Does not replace `make prove` (nmap stays the default).
+prove-ike-scan: venv
+	$(PY) -m covey prove --adapter ike-scan --out out/ike-scan
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info
