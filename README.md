@@ -20,10 +20,11 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **onesixtyone** is the eleventh (`python -m covey prove --adapter onesixtyone`).
 **nbtscan** is the twelfth (`python -m covey prove --adapter nbtscan`).
 **braa** is the thirteenth (`python -m covey prove --adapter braa`).
-The other 7 remain argv+unit only — do not claim them live. Source of
+**ike-scan** is the fourteenth (`python -m covey prove --adapter ike-scan`).
+The other 6 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
 `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`,
-`nbtscan`, `braa`) in
+`nbtscan`, `braa`, `ike-scan`) in
 `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
@@ -95,6 +96,10 @@ lab on UDP/137 on those same addresses — a UDP echo is not enough.
 braa uses `examples/scope.lab.braa.yaml` (`adapter: braa`, SCOPE
 ports `18080`) and the same SNMPv1 GetResponse lab onesixtyone uses —
 a UDP echo is not enough, and the request-id must be echoed.
+ike-scan uses `examples/scope.lab.ike-scan.yaml` (`adapter: ike-scan`,
+SCOPE ports `18080`) and an ISAKMP lab on those same addresses — a
+UDP echo is not enough (CKY-R=0 is the initiator packet reflected).
+arp-scan has no L2 on loopback and stays argv+unit.
 See [PROVE.md](PROVE.md).
 
 ## BYO scanners
@@ -192,6 +197,7 @@ python -m covey prove --adapter hping3
 python -m covey prove --adapter onesixtyone
 python -m covey prove --adapter nbtscan
 python -m covey prove --adapter braa
+python -m covey prove --adapter ike-scan
 python -m covey export --out out
 # or
 make export

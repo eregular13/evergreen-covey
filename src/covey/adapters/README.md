@@ -180,12 +180,26 @@ may `apt-get install braa` onto **this VM only**.
 
 `python -m covey prove --adapter braa`
 
+## ike-scan (fourteenth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_IKE_SCAN`, or the prove path
+may `apt-get install ike-scan` onto **this VM only**.
+
+- pass1: `--sport=0 --dport <SCOPE port>` Main Mode on the tile CIDR
+- pass2: `--aggressive --id=vpn` against pass1-live hosts
+- prove serves ISAKMP and sets a nonzero responder cookie
+  (IKE probe ≠ UDP echo; CKY-R=0 is the initiator packet reflected)
+- parse requires `Handshake returned` with a nonzero CKY-R
+
+`python -m covey prove --adapter ike-scan`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-ike-scan, svmap
+svmap
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
+arp-scan / netdiscover have no L2 on loopback.
 
 The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`
 with a configurable entrypoint.

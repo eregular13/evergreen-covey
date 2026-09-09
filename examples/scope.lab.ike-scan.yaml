@@ -1,0 +1,30 @@
+# Evergreen Covey — signed demo SCOPE for the ike-scan loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. ike-scan is an IKE handshake sweeper, so prove serves
+# ISAKMP on 18080 on the first usable host of each /30. A UDP echo is
+# not enough — ike-scan prints Handshake returned on its own initiator
+# packet when CKY-R stays zero. Parse requires Handshake returned with
+# a nonzero responder cookie. --sport=0 stays unprivileged and avoids
+# the loopback self-echo that happens when sport==dport.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey ike-scan loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: ike-scan
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: 0ff46952cb261da55089452ef8bb7c15e78b4d27f2400a3d26422ad1a5348aa2

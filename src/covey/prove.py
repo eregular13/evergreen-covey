@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, or braa; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, or ike-scan; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ from covey.plan import build_plan
 from covey.runner import (
     ensure_braa,
     ensure_fping,
+    ensure_ike_scan,
     ensure_hping3,
     ensure_httpx,
     ensure_naabu,
@@ -50,6 +51,7 @@ HPING3_LAB_SCOPE = Path("examples/scope.lab.hping3.yaml")
 ONESIXTYONE_LAB_SCOPE = Path("examples/scope.lab.onesixtyone.yaml")
 NBTSCAN_LAB_SCOPE = Path("examples/scope.lab.nbtscan.yaml")
 BRAA_LAB_SCOPE = Path("examples/scope.lab.braa.yaml")
+IKE_SCAN_LAB_SCOPE = Path("examples/scope.lab.ike-scan.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -64,6 +66,7 @@ LAB_SCOPES = {
     "onesixtyone": ONESIXTYONE_LAB_SCOPE,
     "nbtscan": NBTSCAN_LAB_SCOPE,
     "braa": BRAA_LAB_SCOPE,
+    "ike-scan": IKE_SCAN_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -87,6 +90,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "onesixtyone",
         "nbtscan",
         "braa",
+        "ike-scan",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -180,7 +184,9 @@ def loopback_lab_listeners(
     (HTTP 200). sslscan and tlsx need ``loopback_tls_lab`` (a TLS
     handshake). onesixtyone and braa need ``loopback_snmp_lab`` (an
     SNMPv1 GetResponse). nbtscan needs ``loopback_nbstat_lab`` (a
-    NetBIOS name table on UDP/137). Neither is this bare accept.
+    NetBIOS name table on UDP/137). ike-scan needs ``loopback_ike_lab``
+    (an ISAKMP SA with a nonzero responder cookie). Neither is this
+    bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -539,6 +545,78 @@ def loopback_snmp_lab(
                 pass
 
 
+IKE_RESPONDER_COOKIE = b"COVEYLAB"
+
+
+def _ike_handshake_response(request: bytes) -> bytes | None:
+    """Copy initiator cookie, set a nonzero responder cookie, return the SA.
+
+    A UDP echo leaves CKY-R=0. ike-scan then prints Handshake returned
+    on its own initiator packet (same as sport==dport self-echo on
+    loopback). That is not a live host. Parse requires Handshake
+    returned with a nonzero CKY-R. The lab must echo the initiator
+    cookie or ike-scan drops the packet.
+    """
+    if len(request) < 28:
+        return None
+    return request[:8] + IKE_RESPONDER_COOKIE + request[16:]
+
+
+@contextmanager
+def loopback_ike_lab(
+    hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
+    port: int = RUSTSCAN_LAB_PORT,
+) -> Iterator[tuple[str, int]]:
+    """Serve ISAKMP on loopback tiles so ike-scan can observe a handshake.
+
+    A UDP echo is not enough: ike-scan prints ``Handshake returned`` on
+    its own initiator packet when CKY-R stays zero. This lab copies the
+    initiator cookie and sets responder cookie ``COVEYLAB``. That is lab
+    fixture, not a forged scanner result.
+    """
+    sockets: list[socket.socket] = []
+    stop = threading.Event()
+
+    def serve(sock: socket.socket) -> None:
+        while not stop.is_set():
+            try:
+                data, addr = sock.recvfrom(4096)
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+            reply = _ike_handshake_response(data)
+            if not reply:
+                continue
+            try:
+                sock.sendto(reply, addr)
+            except OSError:
+                break
+
+    try:
+        for host in hosts:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError as exc:
+                sock.close()
+                raise RunnerError(
+                    f"IKE lab cannot bind UDP {host}:{port}: {exc}"
+                ) from exc
+            sock.settimeout(0.25)
+            sockets.append(sock)
+            threading.Thread(target=serve, args=(sock,), daemon=True).start()
+        yield hosts[0], port
+    finally:
+        stop.set()
+        for sock in sockets:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
 NBTSCAN_LAB_PORT = 137
 
 
@@ -702,6 +780,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_nbtscan(install_if_missing=install_if_missing)
     if name == "braa":
         return ensure_braa(install_if_missing=install_if_missing)
+    if name == "ike-scan":
+        return ensure_ike_scan(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -762,6 +842,9 @@ def run_prove(
             report = _execute()
     elif plugin.name in {"onesixtyone", "braa"}:
         with loopback_snmp_lab(port=_lab_port(scope)):
+            report = _execute()
+    elif plugin.name == "ike-scan":
+        with loopback_ike_lab(port=_lab_port(scope)):
             report = _execute()
     elif plugin.name == "nbtscan":
         with loopback_nbstat_lab():
