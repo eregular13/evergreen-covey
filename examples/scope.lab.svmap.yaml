@@ -1,0 +1,30 @@
+# Evergreen Covey — signed demo SCOPE for the svmap loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. svmap is a SIP OPTIONS sweeper, so prove serves
+# SIP/2.0 200 on 18080 on the first usable host of each /30. A UDP
+# echo is not enough — svmap ignores its own OPTIONS packet. Parse
+# requires a SIP Device ip:port table cell with a real User-Agent
+# (not "unknown"). -P 0 stays unprivileged (default src 5060 needs
+# root). sipvicious 0.3.3 has no -o and no --fp.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey svmap loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: svmap
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: 5ee6b44d77c82efd9ea280a19fab7a76e0b3731a03f2614a1d868c8d824a2555

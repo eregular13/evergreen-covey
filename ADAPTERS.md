@@ -8,8 +8,8 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
 `whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh),
 `nbtscan` (twelfth), `braa` (thirteenth), `ike-scan`
-(fourteenth).** The
-other 6 ids are argv+unit only. Source of
+(fourteenth), `svmap` (fifteenth).** The
+other 5 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
@@ -17,7 +17,8 @@ The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
 (GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
 whatweb (apt), hping3 (apt + `setcap` for raw sockets), onesixtyone
-(apt), nbtscan (apt), braa (apt), or ike-scan (apt) **on that machine
+(apt), nbtscan (apt), braa (apt), ike-scan (apt), or sipvicious /
+svmap (apt) **on that machine
 only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
@@ -42,7 +43,7 @@ forbidden.
 | `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR (**12th e2e-proven**) | `-v` on live hosts | leading IPv4 / name table (not UDP-echo `ip:<unknown>` / MAC) | `COVEY_NBTSCAN` |
 | `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file `-p <SCOPE port>` (**11th e2e-proven**) | extra communities on live hosts | `ip [community] sysDescr` (not UDP-echo IP / decode error) | `COVEY_ONESIXTYONE` |
 | `braa` | `braa` | `public@host:SCOPE-port:sysDescr` per usable tile host (**13th e2e-proven**) | sysDescr + sysName per host | `ip:oid:value` / `ip:rtt:id:value` (not dispatch-error IP) | `COVEY_BRAA` |
-| `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
+| `svmap` | `svmap` | `-p <SCOPE port>` OPTIONS on the CIDR; `-P 0` (**15th e2e-proven**) | OPTIONS on live hosts | `ip:port` SIP Device table (not UA `unknown` / UDP echo) | `COVEY_SVMAP` |
 | `sslscan` | `sslscan` | TLS probe of the **first usable tile host** as `host:<SCOPE port>` (**7th e2e-proven**) | `--show-certificate` first live host | `Connected to` / XML host (not refused `ERROR`) | `COVEY_SSLSCAN` |
 | `whatweb` | `whatweb` | `-a 1` `http://host:<SCOPE port>` tile hosts (**9th e2e-proven**) | `-a 3` on live host URLs | `http://ip` brief log (not banner `IP[]`) | `COVEY_WHATWEB` |
 | `httpx` | `httpx` | `-silent -l` tile hosts file `-p <SCOPE ports>` (**6th e2e-proven**) | title/status/tech on live hosts | `http(s)://ip` lines | `COVEY_HTTPX` |
@@ -113,6 +114,18 @@ forbidden.
   unprivileged and avoids that self-echo. Pass1 uses SCOPE
   `pass2.ports` (lab default `18080`) via `--dport`. Default IKE port
   is `500` when SCOPE omits the field.
+- **svmap**: SIP OPTIONS sweeper (sipvicious). Fifteenth e2e-proven
+  adapter (`python -m covey prove --adapter svmap` / `make prove-svmap`).
+  Prove serves SIP/2.0 200 on the same loopback addresses rustscan /
+  naabu / nping / httpx bind and sets User-Agent `covey-sip-lab`. A
+  UDP echo is not enough: svmap ignores its own OPTIONS packet
+  (`found nothing`). A non-SIP datagram can still print `SIP Device`
+  with User-Agent `unknown` (the IP is not a live host). Parse
+  requires an `ip:port` SIP Device table cell with a real User-Agent.
+  sipvicious 0.3.3 has no `-o` and no `--fp` — results print on
+  stdout. `-P 0` stays unprivileged (default src 5060 needs root).
+  Pass1 uses SCOPE `pass2.ports` (lab default `18080`) via `-p`.
+  Default SIP port is `5060` when SCOPE omits the field.
 - **arp-scan** / **netdiscover**: L2 ARP. Loopback is
   `ARPHRD_LOOPBACK` (no MAC). `arp-scan -I lo` fails closed with
   `Could not obtain MAC address for interface lo`. `netdiscover -i lo`
@@ -166,7 +179,7 @@ forbidden.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
-  (zmap, nping, hping3, sslscan, whatweb, onesixtyone, braa, ike-scan) use the first listed port.
+  (zmap, nping, hping3, sslscan, whatweb, onesixtyone, braa, ike-scan, svmap) use the first listed port.
 
 ## Resolution
 

@@ -1,6 +1,6 @@
 # Evergreen Covey — prove honesty
 
-Covey has **20** live adapter ids (argv + unit parse). Only **fourteen** have
+Covey has **20** live adapter ids (argv + unit parse). Only **fifteen** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.
 
@@ -20,17 +20,17 @@ binary against a signed loopback lab.
 | 12 | `nbtscan` | `python -m covey prove --adapter nbtscan` / `make prove-nbtscan` | `out/shards/*/stdout.log` + `argv.json` |
 | 13 | `braa` | `python -m covey prove --adapter braa` / `make prove-braa` | `out/shards/*/stdout.log` + `argv.json` |
 | 14 | `ike-scan` | `python -m covey prove --adapter ike-scan` / `make prove-ike-scan` | `out/shards/*/stdout.log` + `argv.json` |
+| 15 | `svmap` | `python -m covey prove --adapter svmap` / `make prove-svmap` | `out/shards/*/stdout.log` + `argv.json` |
 
-The other **6** (`masscan`, `arp-scan`, `netdiscover`,
-`zmap`, `unicornscan`,
-`svmap`)
+The other **5** (`masscan`, `arp-scan`, `netdiscover`,
+`zmap`, `unicornscan`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
 Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
-(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`, `braa`, `ike-scan`). `UNPROVEN_ADAPTERS` is the derived remainder.
-Adding a fifteenth live e2e requires a real BYO prove — not a docs edit.
+(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`, `braa`, `ike-scan`, `svmap`). `UNPROVEN_ADAPTERS` is the derived remainder.
+Adding a sixteenth live e2e requires a real BYO prove — not a docs edit.
 
-`python -m covey prove --adapter masscan` (or any of the 6, with or
+`python -m covey prove --adapter masscan` (or any of the 5, with or
 without `--no-install`) **fails closed**.
 
 masscan was preferred earlier. `apt-get install masscan` resolves
@@ -76,8 +76,16 @@ cookie `COVEYLAB`. A UDP echo is not enough — ike-scan prints
 `Handshake returned` on its own initiator packet when CKY-R stays
 zero (including sport==dport self-echo on loopback). Parse requires
 `Handshake returned` with a nonzero CKY-R. `--sport=0` stays
-unprivileged and avoids that self-echo. arp-scan was preferred
-first: `arp-scan -I lo` fails with `Could not obtain MAC address
+unprivileged and avoids that self-echo. The fifteenth brick is
+**svmap**: SIP OPTIONS sweep (sipvicious). Prove serves SIP/2.0
+200 on the loopback tiles and sets User-Agent `covey-sip-lab`.
+A UDP echo is not enough — svmap ignores its own OPTIONS packet
+(`found nothing`). A non-SIP datagram can still print `SIP Device`
+with User-Agent `unknown` (the IP is not a live host). Parse
+requires an `ip:port` SIP Device table cell with a real
+User-Agent. sipvicious 0.3.3 has no `-o` and no `--fp`. `-P 0`
+stays unprivileged (default src 5060 needs root). arp-scan was
+preferred earlier: `arp-scan -I lo` fails with `Could not obtain MAC address
 for interface lo` (loopback is `ARPHRD_LOOPBACK`, no L2). That is
 not a live prove. Covey does not invent a TAP/veth brick.
 netdiscover on `lo` prints `not an Ethernet interface` for the
@@ -86,7 +94,7 @@ prove.
 
 ## Lab SCOPE
 
-All fourteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
+All fifteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 `max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
@@ -105,6 +113,7 @@ All fourteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | nbtscan | `examples/scope.lab.nbtscan.yaml` | `nbtscan -s :` tile CIDR (NBSTAT on UDP/137) | `-v` on pass1-live hosts |
 | braa | `examples/scope.lab.braa.yaml` | `braa public@host:18080:sysDescr` per usable tile host | sysDescr + sysName on pass1-live hosts |
 | ike-scan | `examples/scope.lab.ike-scan.yaml` | `ike-scan --sport=0 --dport=18080` tile CIDR (Main Mode) | `--aggressive --id=vpn` on pass1-live hosts |
+| svmap | `examples/scope.lab.svmap.yaml` | `svmap -p 18080 -P 0` tile CIDR (OPTIONS) | OPTIONS on pass1-live hosts |
 
 rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
@@ -192,6 +201,17 @@ unprivileged and avoids the loopback self-echo that happens when
 sport==dport. Pass1 uses SCOPE `pass2.ports` (lab default
 `18080`) via `--dport`.
 
+svmap is a **SIP OPTIONS sweeper**. A UDP echo is not
+enough: svmap ignores its own OPTIONS packet (`found nothing`).
+Prove serves SIP/2.0 200 on the same loopback addresses rustscan /
+naabu / nping / httpx bind and sets User-Agent `covey-sip-lab`.
+svmap itself must still send OPTIONS and print an `ip:port` SIP
+Device table cell with a real User-Agent. User-Agent `unknown`
+names the IP but is not a live host. sipvicious 0.3.3 has no
+`-o` and no `--fp` — results print on stdout. `-P 0` stays
+unprivileged. Pass1 uses SCOPE `pass2.ports` (lab default
+`18080`) via `-p`.
+
 ## BYO binaries
 
 Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
@@ -223,6 +243,8 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
   `apt-get install braa` on this VM only
 - **ike-scan**: `PATH` / `COVEY_IKE_SCAN` / optional
   `apt-get install ike-scan` on this VM only
+- **svmap**: `PATH` / `COVEY_SVMAP` / optional
+  `apt-get install sipvicious` on this VM only (provides `/usr/bin/svmap`)
 
 `--no-install` fails closed if the binary is missing.
 
@@ -230,7 +252,7 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
 
 Prove exits non-zero when:
 
-- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, or ike-scan
+- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, or svmap
 - SCOPE is unsigned, expired, or a wide spray
 - the BYO binary cannot be resolved or will not run
 - pass1 workers fail, artifacts are missing, no live hosts, or pass2
