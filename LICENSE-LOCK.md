@@ -20,7 +20,7 @@ into the tree, or commit:
 Operators bring their own scanner. Covey resolves the selected adapter
 binary from `PATH`, `COVEY_<TOOL>`, `COVEY_BIN`, or a user-supplied
 `docker://` image. The prove path may install Nmap (which ships nping),
-fping, sslscan, whatweb, hping3, onesixtyone, or nbtscan **on the
+fping, sslscan, whatweb, hping3, onesixtyone, nbtscan, or braa **on the
 local prove VM only**, or download a rustscan/naabu/httpx/tlsx GitHub
 release into `~/.local/bin` on that machine; those binaries are not part
 of git. Other live adapters are argv+parser only — never vendored, never

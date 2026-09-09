@@ -7,8 +7,8 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
 `whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh),
-`nbtscan` (twelfth).** The
-other 8 ids are argv+unit only. Source of
+`nbtscan` (twelfth), `braa` (thirteenth).** The
+other 7 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
@@ -16,7 +16,7 @@ The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
 (GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
 whatweb (apt), hping3 (apt + `setcap` for raw sockets), onesixtyone
-(apt), or nbtscan (apt) **on that machine only** — never into git.
+(apt), nbtscan (apt), or braa (apt) **on that machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -39,7 +39,7 @@ forbidden.
 | `ike-scan` | `ike-scan` | IKE Main Mode on the CIDR | `--aggressive --id=vpn` hosts | handshake IPv4 | `COVEY_IKE_SCAN` |
 | `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR (**12th e2e-proven**) | `-v` on live hosts | leading IPv4 / name table (not UDP-echo `ip:<unknown>` / MAC) | `COVEY_NBTSCAN` |
 | `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file `-p <SCOPE port>` (**11th e2e-proven**) | extra communities on live hosts | `ip [community] sysDescr` (not UDP-echo IP / decode error) | `COVEY_ONESIXTYONE` |
-| `braa` | `braa` | `public@first-last:sysDescr` | sysDescr + sysName per host | `ip:oid:value` | `COVEY_BRAA` |
+| `braa` | `braa` | `public@host:SCOPE-port:sysDescr` per usable tile host (**13th e2e-proven**) | sysDescr + sysName per host | `ip:oid:value` / `ip:rtt:id:value` (not dispatch-error IP) | `COVEY_BRAA` |
 | `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
 | `sslscan` | `sslscan` | TLS probe of the **first usable tile host** as `host:<SCOPE port>` (**7th e2e-proven**) | `--show-certificate` first live host | `Connected to` / XML host (not refused `ERROR`) | `COVEY_SSLSCAN` |
 | `whatweb` | `whatweb` | `-a 1` `http://host:<SCOPE port>` tile hosts (**9th e2e-proven**) | `-a 3` on live host URLs | `http://ip` brief log (not banner `IP[]`) | `COVEY_WHATWEB` |
@@ -88,6 +88,17 @@ forbidden.
   banner are not live hosts. UDP/137 is privileged; prove may lower
   `ip_unprivileged_port_start` on this VM only. Lab SCOPE omits
   `pass2.ports` — NetBIOS is not a TCP port surface.
+- **braa**: SNMP GET sweeper. Thirteenth e2e-proven adapter
+  (`python -m covey prove --adapter braa` / `make prove-braa`).
+  Prove serves SNMPv1 GetResponse on the same loopback addresses rustscan
+  / naabu / nping / httpx bind and echoes the request-id. A UDP echo is
+  not enough: braa prints nothing on timeout, and a mismatched
+  request-id yields `Message cannot be dispatched!` (the IP is not a
+  live host). Parse requires `ip:oid:value` or `ip:rtt:id:value`.
+  pass1 is one query per usable tile host — braa 0.82 rejects some
+  loopback first-last ranges. Pass1 uses SCOPE `pass2.ports` (lab
+  default `18080`). Default SNMP port is `161` when SCOPE omits the
+  field.
 - **onesixtyone** / **httpx** / **tlsx**: the runner writes `{out_prefix}.hosts`
   (and `.comm` for onesixtyone) next to artifacts before spawn. argv still
   invokes only that tool.
@@ -136,7 +147,7 @@ forbidden.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
-  (zmap, nping, hping3, sslscan, whatweb, onesixtyone) use the first listed port.
+  (zmap, nping, hping3, sslscan, whatweb, onesixtyone, braa) use the first listed port.
 
 ## Resolution
 

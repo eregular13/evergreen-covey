@@ -19,10 +19,11 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **hping3** is the tenth (`python -m covey prove --adapter hping3`).
 **onesixtyone** is the eleventh (`python -m covey prove --adapter onesixtyone`).
 **nbtscan** is the twelfth (`python -m covey prove --adapter nbtscan`).
-The other 8 remain argv+unit only — do not claim them live. Source of
+**braa** is the thirteenth (`python -m covey prove --adapter braa`).
+The other 7 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
 `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`,
-`nbtscan`) in
+`nbtscan`, `braa`) in
 `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
@@ -91,6 +92,9 @@ ports `18080`) and an SNMPv1 GetResponse lab on those same addresses —
 a UDP echo is not enough. nbtscan uses
 `examples/scope.lab.nbtscan.yaml` (`adapter: nbtscan`) and an NBSTAT
 lab on UDP/137 on those same addresses — a UDP echo is not enough.
+braa uses `examples/scope.lab.braa.yaml` (`adapter: braa`, SCOPE
+ports `18080`) and the same SNMPv1 GetResponse lab onesixtyone uses —
+a UDP echo is not enough, and the request-id must be echoed.
 See [PROVE.md](PROVE.md).
 
 ## BYO scanners
@@ -187,6 +191,7 @@ python -m covey prove --adapter whatweb
 python -m covey prove --adapter hping3
 python -m covey prove --adapter onesixtyone
 python -m covey prove --adapter nbtscan
+python -m covey prove --adapter braa
 python -m covey export --out out
 # or
 make export

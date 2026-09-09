@@ -1,0 +1,29 @@
+# Evergreen Covey — signed demo SCOPE for the braa loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. braa is an SNMP GET sweeper, so prove serves SNMPv1
+# GetResponse on 18080 on the first usable host of each /30. A UDP echo
+# is not enough — braa prints nothing on timeout and "cannot be
+# dispatched" unless the request-id is echoed. Parse requires
+# ip:oid:value (or ip:rtt:id:value).
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey braa loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: braa
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: be11f1a20dfeb617ede22cba73bcaa9096b4cd1e5ec40cc7882fc47183071b35
