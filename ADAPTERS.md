@@ -8,8 +8,9 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
 `whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh),
 `nbtscan` (twelfth), `braa` (thirteenth), `ike-scan`
-(fourteenth), `svmap` (fifteenth).** The
-other 5 ids are argv+unit only. Source of
+(fourteenth), `svmap` (fifteenth), `unicornscan`
+(sixteenth).** The
+other 4 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
@@ -17,8 +18,8 @@ The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
 (GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
 whatweb (apt), hping3 (apt + `setcap` for raw sockets), onesixtyone
-(apt), nbtscan (apt), braa (apt), ike-scan (apt), or sipvicious /
-svmap (apt) **on that machine
+(apt), nbtscan (apt), braa (apt), ike-scan (apt), sipvicious /
+svmap (apt), or unicornscan (GitHub release `.deb`) **on that machine
 only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
@@ -36,7 +37,7 @@ forbidden.
 | `arp-scan` | `arp-scan` | CIDR local ARP sweep | retry/timeout deepen on hosts | first-column IPv4 + MAC | `COVEY_ARP_SCAN` |
 | `netdiscover` | `netdiscover` | `-P -N -r <cidr>` | `-r host/32` per live host | ARP table IPv4 | `COVEY_NETDISCOVER` |
 | `zmap` | `zmap` | `-p 80` on the tile (`-B /dev/null` so RFC1918 labs work) | `-p 443` on `host/32` list | one IPv4 per line | `COVEY_ZMAP` |
-| `unicornscan` | `unicornscan` | `-mT <cidr>:80,443` | `-mT host:22,80,443,3389` | `TCP open a.b.c.d:port` | `COVEY_UNICORNSCAN` |
+| `unicornscan` | `unicornscan` | `-mT <cidr>:<SCOPE ports>` (**16th e2e-proven**); loopback adds `-i lo -s 127.0.0.254` | `-mT host:<SCOPE ports>` | `TCP open` `ip:port` / `from ip` (not `TCP closed`) | `COVEY_UNICORNSCAN` |
 | `nping` | `nping` | `--tcp-connect -p <SCOPE ports>` tile hosts (**5th e2e-proven**) | `--tcp-connect` live hosts | `Handshake with ip:port completed` (not refused `RCVD`) | `COVEY_NPING` |
 | `hping3` | `hping3` | `--icmp` first usable tile host (**10th e2e-proven**) | `--syn -p <SCOPE port or 80>` first live host | `ip=` reply lines (not HPING banner) | `COVEY_HPING3` |
 | `ike-scan` | `ike-scan` | `--sport=0 --dport <SCOPE port>` Main Mode on the CIDR (**14th e2e-proven**) | `--aggressive --id=vpn` hosts | `Handshake returned` with nonzero CKY-R (not self-echo `CKY-R=0` / notify) | `COVEY_IKE_SCAN` |
@@ -126,6 +127,21 @@ forbidden.
   stdout. `-P 0` stays unprivileged (default src 5060 needs root).
   Pass1 uses SCOPE `pass2.ports` (lab default `18080`) via `-p`.
   Default SIP port is `5060` when SCOPE omits the field.
+- **unicornscan**: TCP SYN sweeper. Sixteenth e2e-proven adapter
+  (`python -m covey prove --adapter unicornscan` /
+  `make prove-unicornscan`). Prove binds the same loopback lab
+  listener rustscan / naabu / nping use. Default iface is the
+  gateway NIC — a 127/8 tile without `-i lo` sends on eth0 and
+  finds 0. A same-IP self-scan on lo also finds 0; argv sources
+  `127.0.0.254` (still 127/8, not in the lab `/28`). Parse
+  requires `TCP open`; `TCP closed` names the IP but is not a
+  live host. Pass1 uses SCOPE `pass2.ports` (lab default
+  `18080`). Ubuntu noble has no apt unicornscan; prove may
+  install a GitHub release `.deb` on this VM only. Package
+  `modules.conf` is   `0640`; prove may `chmod 644` on this VM
+  only. Two processes on the same UID collide on
+  `/tmp/unicornscan-<uid>/{send,listen}`; the lab SCOPE uses
+  `max_workers: 1` so tiles run sequentially.
 - **arp-scan** / **netdiscover**: L2 ARP. Loopback is
   `ARPHRD_LOOPBACK` (no MAC). `arp-scan -I lo` fails closed with
   `Could not obtain MAC address for interface lo`. `netdiscover -i lo`
@@ -180,6 +196,7 @@ forbidden.
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
   (zmap, nping, hping3, sslscan, whatweb, onesixtyone, braa, ike-scan, svmap) use the first listed port.
+  unicornscan takes the full SCOPE port list on `host:ports`.
 
 ## Resolution
 

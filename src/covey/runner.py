@@ -48,6 +48,8 @@ TLSX_LINUX_X64_URL = (
     "https://github.com/projectdiscovery/tlsx/releases/download/"
     f"v{TLSX_RELEASE}/tlsx_{TLSX_RELEASE}_linux_amd64.zip"
 )
+UNICORNSCAN_RELEASE = "0.4.52"
+UNICORNSCAN_MODULES_CONF = Path("/etc/unicornscan/modules.conf")
 
 
 @dataclass
@@ -846,6 +848,133 @@ def ensure_svmap(*, install_if_missing: bool = False) -> ExecSpec:
     if not found:
         raise RunnerError("sipvicious installed but svmap is still not on PATH")
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="svmap")
+
+
+def _os_release() -> dict[str, str]:
+    values: dict[str, str] = {}
+    try:
+        text = Path("/etc/os-release").read_text(encoding="utf-8")
+    except OSError:
+        return values
+    for raw in text.splitlines():
+        if "=" not in raw:
+            continue
+        key, value = raw.split("=", 1)
+        values[key] = value.strip().strip('"')
+    return values
+
+
+def _unicornscan_deb_url() -> str:
+    """Ubuntu/Debian .deb for this VM. Binary stays off git."""
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        raise RunnerError(
+            f"no unicornscan GitHub release mapping for machine={machine!r}; "
+            "install unicornscan yourself and set COVEY_UNICORNSCAN"
+        )
+    info = _os_release()
+    distro = (info.get("ID") or "").lower()
+    version = info.get("VERSION_ID") or ""
+    tag = {
+        ("ubuntu", "24.04"): "ubuntu-24.04",
+        ("ubuntu", "22.04"): "ubuntu-22.04",
+        ("ubuntu", "20.04"): "ubuntu-20.04",
+        ("debian", "12"): "debian-bookworm",
+        ("debian", "11"): "debian-bullseye",
+    }.get((distro, version), "ubuntu-24.04")
+    return (
+        "https://github.com/robertelee78/unicornscan/releases/download/"
+        f"v{UNICORNSCAN_RELEASE}/unicornscan_{UNICORNSCAN_RELEASE}_{tag}.deb"
+    )
+
+
+def _unicornscan_modules_readable() -> bool:
+    path = UNICORNSCAN_MODULES_CONF
+    if not path.is_file():
+        return False
+    return os.access(path, os.R_OK)
+
+
+def _grant_unicornscan_modules_read() -> None:
+    """Make modules.conf readable on this VM only. Never vendors a binary."""
+    path = UNICORNSCAN_MODULES_CONF
+    if not path.is_file():
+        raise RunnerError(f"unicornscan modules.conf missing: {path}")
+    if os.access(path, os.R_OK):
+        return
+    completed = subprocess.run(
+        ["sudo", "chmod", "644", str(path)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0 or not os.access(path, os.R_OK):
+        raise RunnerError(
+            "unicornscan modules.conf is not readable (package default is "
+            "root:unicornscan 0640). Prove may chmod 644 on this VM only: "
+            + (completed.stderr or completed.stdout)[-400:]
+        )
+
+
+def _install_unicornscan_deb() -> Path:
+    """Download the unicornscan release .deb onto this VM. Never into git."""
+    url = _unicornscan_deb_url()
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install unicornscan: apt-get not available")
+    try:
+        with tempfile.TemporaryDirectory(prefix="covey-unicornscan-") as tmp:
+            deb = Path(tmp) / "unicornscan.deb"
+            urllib.request.urlretrieve(url, deb)
+            install = subprocess.run(
+                ["sudo", "apt-get", "install", "-y", str(deb)],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if install.returncode != 0:
+                raise RunnerError(
+                    "apt-get install unicornscan deb failed: "
+                    + (install.stderr or install.stdout)[-400:]
+                )
+    except urllib.error.URLError as exc:
+        raise RunnerError(
+            f"download unicornscan {UNICORNSCAN_RELEASE} failed: {exc}"
+        ) from exc
+    found = _which_tool("unicornscan")
+    if not found:
+        raise RunnerError("unicornscan installed but still not on PATH")
+    return Path(found)
+
+
+def ensure_unicornscan(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO unicornscan. Optionally install a release .deb on this VM only."""
+    try:
+        spec = resolve_exec("unicornscan")
+    except RunnerError:
+        if not install_if_missing:
+            raise
+        path = _install_unicornscan_deb()
+        spec = ExecSpec(
+            kind="local",
+            binary=str(path),
+            display=str(path),
+            entrypoint="unicornscan",
+        )
+    if spec.kind != "local":
+        return spec
+    if _unicornscan_modules_readable():
+        return spec
+    if not install_if_missing:
+        raise RunnerError(
+            "unicornscan is present but /etc/unicornscan/modules.conf is not "
+            "readable (package default is 0640 root:unicornscan). Re-run "
+            "without --no-install so prove can chmod 644 on this VM only, "
+            "or chmod it yourself"
+        )
+    _grant_unicornscan_modules_read()
+    if not _unicornscan_modules_readable():
+        raise RunnerError("unicornscan modules.conf still not readable after chmod")
+    return spec
 
 
 def _hping3_path() -> str | None:

@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan prove-svmap test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan prove-svmap prove-unicornscan test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -112,6 +112,12 @@ prove-ike-scan: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-svmap: venv
 	$(PY) -m covey prove --adapter svmap --out out/svmap
+
+# Sixteenth e2e-proven adapter. BYO unicornscan (GitHub release .deb on this
+# VM only). TCP SYN on loopback needs -i lo and a source IP outside the
+# tile. Does not replace `make prove` (nmap stays the default).
+prove-unicornscan: venv
+	$(PY) -m covey prove --adapter unicornscan --out out/unicornscan
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

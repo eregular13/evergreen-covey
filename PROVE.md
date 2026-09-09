@@ -1,6 +1,6 @@
 # Evergreen Covey — prove honesty
 
-Covey has **20** live adapter ids (argv + unit parse). Only **fifteen** have
+Covey has **20** live adapter ids (argv + unit parse). Only **sixteen** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.
 
@@ -21,16 +21,17 @@ binary against a signed loopback lab.
 | 13 | `braa` | `python -m covey prove --adapter braa` / `make prove-braa` | `out/shards/*/stdout.log` + `argv.json` |
 | 14 | `ike-scan` | `python -m covey prove --adapter ike-scan` / `make prove-ike-scan` | `out/shards/*/stdout.log` + `argv.json` |
 | 15 | `svmap` | `python -m covey prove --adapter svmap` / `make prove-svmap` | `out/shards/*/stdout.log` + `argv.json` |
+| 16 | `unicornscan` | `python -m covey prove --adapter unicornscan` / `make prove-unicornscan` | `out/shards/*/stdout.log` + `argv.json` |
 
-The other **5** (`masscan`, `arp-scan`, `netdiscover`,
-`zmap`, `unicornscan`)
+The other **4** (`masscan`, `arp-scan`, `netdiscover`,
+`zmap`)
 remain **argv+unit only**. Do not claim they are live on Covey.
 
 Source of truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`
-(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`, `braa`, `ike-scan`, `svmap`). `UNPROVEN_ADAPTERS` is the derived remainder.
-Adding a sixteenth live e2e requires a real BYO prove — not a docs edit.
+(`nmap`, `rustscan`, `fping`, `naabu`, `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`, `nbtscan`, `braa`, `ike-scan`, `svmap`, `unicornscan`). `UNPROVEN_ADAPTERS` is the derived remainder.
+Adding a seventeenth live e2e requires a real BYO prove — not a docs edit.
 
-`python -m covey prove --adapter masscan` (or any of the 5, with or
+`python -m covey prove --adapter masscan` (or any of the 4, with or
 without `--no-install`) **fails closed**.
 
 masscan was preferred earlier. `apt-get install masscan` resolves
@@ -84,18 +85,37 @@ A UDP echo is not enough — svmap ignores its own OPTIONS packet
 with User-Agent `unknown` (the IP is not a live host). Parse
 requires an `ip:port` SIP Device table cell with a real
 User-Agent. sipvicious 0.3.3 has no `-o` and no `--fp`. `-P 0`
-stays unprivileged (default src 5060 needs root). arp-scan was
+stays unprivileged (default src 5060 needs root). The sixteenth
+brick is **unicornscan**: TCP SYN on loopback. zmap was preferred
+first. `apt-get install zmap` resolves `/usr/sbin/zmap` 2.1.1,
+but zmap is a raw SYN/pcap scanner: `-i lo` without `-X` fatals
+on gateway-MAC mismatch; `-i lo -X` (and ICMP echoscan) complete
+with an empty result file; the lab TCP listener never accepts.
+That is not a live prove. Covey does not invent a TAP/veth brick.
+unicornscan 0.4.52 on `-i lo` with source `127.0.0.254` prints
+`TCP open` against the same loopback lab listener rustscan /
+naabu / nping use. A same-IP self-scan on lo finds 0. Default
+iface is eth0 — a 127/8 tile without `-i lo` finds 0. Parse
+requires `TCP open`; `TCP closed` names the IP but is not a live
+host. Ubuntu noble has no apt unicornscan; prove may install a
+GitHub release `.deb` on this VM only. Package `modules.conf` is
+`0640`; prove may `chmod 644` on this VM only. Two unicornscan
+processes on the same UID collide on
+`/tmp/unicornscan-<uid>/{send,listen}`; the lab SCOPE uses
+`max_workers: 1`. arp-scan was
 preferred earlier: `arp-scan -I lo` fails with `Could not obtain MAC address
 for interface lo` (loopback is `ARPHRD_LOOPBACK`, no L2). That is
 not a live prove. Covey does not invent a TAP/veth brick.
 netdiscover on `lo` prints `not an Ethernet interface` for the
 same reason. masscan stays argv+unit until a non-loopback raw-SYN
-prove.
+prove. zmap stays argv+unit for the same loopback-SYN reason.
 
 ## Lab SCOPE
 
-All fifteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
-`max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
+All sixteen proven paths tile loopback `127.0.0.0/28` into four `/30`s.
+Fifteen use `max_workers: 2`. unicornscan uses `max_workers: 1` because
+two processes on the same UID collide on
+`/tmp/unicornscan-<uid>/{send,listen}`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
 | --- | --- | --- | --- |
@@ -114,8 +134,9 @@ All fifteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | braa | `examples/scope.lab.braa.yaml` | `braa public@host:18080:sysDescr` per usable tile host | sysDescr + sysName on pass1-live hosts |
 | ike-scan | `examples/scope.lab.ike-scan.yaml` | `ike-scan --sport=0 --dport=18080` tile CIDR (Main Mode) | `--aggressive --id=vpn` on pass1-live hosts |
 | svmap | `examples/scope.lab.svmap.yaml` | `svmap -p 18080 -P 0` tile CIDR (OPTIONS) | OPTIONS on pass1-live hosts |
+| unicornscan | `examples/scope.lab.unicornscan.yaml` | `unicornscan -mT -i lo -s 127.0.0.254 <tile>:18080` (`max_workers: 1`) | unicornscan-only on pass1-live hosts |
 
-rustscan, naabu, and nping `--tcp-connect` are **TCP probes**. Unlike
+rustscan, naabu, nping `--tcp-connect`, and unicornscan are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
 unless a TCP port is open. The prove binds a lab listener on
 `127.0.0.1`, `.5`, `.9`, `.13` port `18080` (first usable host of each
@@ -124,6 +145,8 @@ scanner result. rustscan itself must still connect and print greppable
 `ip -> [18080]` lines. naabu must still connect-scan and print
 `ip:18080` lines. nping must still complete `Handshake with ip:18080`
 lines. Connection-refused `RCVD` lines are not live hosts.
+unicornscan must still SYN-scan and print `TCP open` lines.
+`TCP closed` names the IP but is not a live host.
 
 httpx is an **HTTP probe**. Bare TCP accept is not enough: httpx prints
 nothing unless the peer speaks HTTP. Prove serves HTTP/1.1 200 on the
@@ -212,6 +235,18 @@ names the IP but is not a live host. sipvicious 0.3.3 has no
 unprivileged. Pass1 uses SCOPE `pass2.ports` (lab default
 `18080`) via `-p`.
 
+unicornscan is a **TCP SYN sweeper**. Prove binds the same
+loopback lab listener rustscan / naabu / nping use. unicornscan
+itself must still send SYN and print `TCP open`. `TCP closed`
+names the IP but is not a live host. Default iface is the
+gateway NIC; loopback tiles add `-i lo`. A same-IP self-scan on
+lo finds 0, so argv sources `127.0.0.254` (still 127/8, not in
+the lab `/28`). Two processes on the same UID collide on
+`/tmp/unicornscan-<uid>/{send,listen}`, so the lab SCOPE uses
+`max_workers: 1` (four sequential tiles; still ≥2 shards).
+Pass1 uses SCOPE `pass2.ports` (lab default `18080`). zmap was
+preferred first and stays argv+unit — see the hold above.
+
 ## BYO binaries
 
 Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
@@ -245,6 +280,8 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
   `apt-get install ike-scan` on this VM only
 - **svmap**: `PATH` / `COVEY_SVMAP` / optional
   `apt-get install sipvicious` on this VM only (provides `/usr/bin/svmap`)
+- **unicornscan**: `PATH` / `COVEY_UNICORNSCAN` / optional GitHub release
+  `.deb` install on this VM only (Ubuntu noble has no apt unicornscan)
 
 `--no-install` fails closed if the binary is missing.
 
@@ -252,7 +289,7 @@ Scanner binaries stay **off git**. LICENSE-LOCK is unchanged.
 
 Prove exits non-zero when:
 
-- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, or svmap
+- the adapter is not nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, svmap, or unicornscan
 - SCOPE is unsigned, expired, or a wide spray
 - the BYO binary cannot be resolved or will not run
 - pass1 workers fail, artifacts are missing, no live hosts, or pass2
