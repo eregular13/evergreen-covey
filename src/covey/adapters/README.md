@@ -141,10 +141,22 @@ BYO only. Resolve from `PATH` / `COVEY_HPING3`, or the prove path may
 
 `python -m covey prove --adapter hping3`
 
+## onesixtyone (eleventh e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_ONESIXTYONE`, or the prove path
+may `apt-get install onesixtyone` onto **this VM only**.
+
+- pass1: `-c` communities `-i` tile hosts `-p <SCOPE port>`
+- pass2: extra communities against pass1-live hosts
+- prove serves SNMPv1 GetResponse (SNMP probe ≠ UDP echo)
+- parse requires `ip [community] sysDescr`; decode-error IPs are ignored
+
+`python -m covey prove --adapter onesixtyone`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-ike-scan, nbtscan, onesixtyone, braa, svmap
+ike-scan, nbtscan, braa, svmap
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 

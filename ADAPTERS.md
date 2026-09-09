@@ -6,16 +6,16 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
-`whatweb` (ninth), `hping3` (tenth).** The other 10 ids are argv+unit
-only. Source of
+`whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh).** The
+other 9 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
 (GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
-whatweb (apt), or hping3 (apt + `setcap` for raw sockets) **on that
-machine only** — never into git.
+whatweb (apt), hping3 (apt + `setcap` for raw sockets), or onesixtyone
+(apt) **on that machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -37,7 +37,7 @@ forbidden.
 | `hping3` | `hping3` | `--icmp` first usable tile host (**10th e2e-proven**) | `--syn -p <SCOPE port or 80>` first live host | `ip=` reply lines (not HPING banner) | `COVEY_HPING3` |
 | `ike-scan` | `ike-scan` | IKE Main Mode on the CIDR | `--aggressive --id=vpn` hosts | handshake IPv4 | `COVEY_IKE_SCAN` |
 | `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR | `-v` on live hosts | leading IPv4 / name table | `COVEY_NBTSCAN` |
-| `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file | extra communities on live hosts | `ip [community] …` | `COVEY_ONESIXTYONE` |
+| `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file `-p <SCOPE port>` (**11th e2e-proven**) | extra communities on live hosts | `ip [community] sysDescr` (not UDP-echo IP / decode error) | `COVEY_ONESIXTYONE` |
 | `braa` | `braa` | `public@first-last:sysDescr` | sysDescr + sysName per host | `ip:oid:value` | `COVEY_BRAA` |
 | `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
 | `sslscan` | `sslscan` | TLS probe of the **first usable tile host** as `host:<SCOPE port>` (**7th e2e-proven**) | `--show-certificate` first live host | `Connected to` / XML host (not refused `ERROR`) | `COVEY_SSLSCAN` |
@@ -69,6 +69,15 @@ forbidden.
   requires `Connected to` / XML `ssltest host`; connection-refused
   `ERROR` lines name the IP but are not live hosts. Pass1 uses SCOPE
   `pass2.ports` (lab default `18080`).
+- **onesixtyone**: SNMP community sweeper. Eleventh e2e-proven adapter
+  (`python -m covey prove --adapter onesixtyone` / `make prove-onesixtyone`).
+  Prove serves SNMPv1 GetResponse on the same loopback addresses rustscan
+  / naabu / nping / httpx bind. A UDP echo is not enough: onesixtyone
+  prints the source IP on any datagram, but parse requires
+  `ip [community] sysDescr` after a GetResponse decode. Decode-error
+  lines and the hosts sidecar are not live hosts. Pass1 uses SCOPE
+  `pass2.ports` (lab default `18080`) via `-p`. Default SNMP port is
+  `161` when SCOPE omits the field.
 - **onesixtyone** / **httpx** / **tlsx**: the runner writes `{out_prefix}.hosts`
   (and `.comm` for onesixtyone) next to artifacts before spawn. argv still
   invokes only that tool.
@@ -117,7 +126,7 @@ forbidden.
 - **SCOPE `pass2.ports` / `deepen.ports`**: deepen port lists are
   operator-declared. Adapters keep their built-in default when the field is
   omitted. Empty or injectable strings are refused. Single-port tools
-  (zmap, nping, hping3, sslscan, whatweb) use the first listed port.
+  (zmap, nping, hping3, sslscan, whatweb, onesixtyone) use the first listed port.
 
 ## Resolution
 

@@ -17,9 +17,10 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **tlsx** is the eighth (`python -m covey prove --adapter tlsx`).
 **whatweb** is the ninth (`python -m covey prove --adapter whatweb`).
 **hping3** is the tenth (`python -m covey prove --adapter hping3`).
-The other 10 remain argv+unit only — do not claim them live. Source of
+**onesixtyone** is the eleventh (`python -m covey prove --adapter onesixtyone`).
+The other 9 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
-`nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`) in
+`nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`) in
 `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
@@ -82,7 +83,10 @@ and the same TLS lab — HTTP 200 is not enough. whatweb uses
 `18080`) and the same HTTP/1.1 200 lab httpx uses — bare TCP accept
 is not enough. hping3 uses `examples/scope.lab.hping3.yaml`
 (`adapter: hping3`) and ICMP on loopback — no listener. Raw sockets
-need `CAP_NET_RAW` (or root). See [PROVE.md](PROVE.md).
+need `CAP_NET_RAW` (or root). onesixtyone uses
+`examples/scope.lab.onesixtyone.yaml` (`adapter: onesixtyone`, SCOPE
+ports `18080`) and an SNMPv1 GetResponse lab on those same addresses —
+a UDP echo is not enough. See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
@@ -176,6 +180,7 @@ python -m covey prove --adapter sslscan
 python -m covey prove --adapter tlsx
 python -m covey prove --adapter whatweb
 python -m covey prove --adapter hping3
+python -m covey prove --adapter onesixtyone
 python -m covey export --out out
 # or
 make export

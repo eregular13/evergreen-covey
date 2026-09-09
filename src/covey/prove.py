@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, or hping3; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, or onesixtyone; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from covey.runner import (
     ensure_naabu,
     ensure_nmap,
     ensure_nping,
+    ensure_onesixtyone,
     ensure_rustscan,
     ensure_sslscan,
     ensure_tlsx,
@@ -43,6 +44,7 @@ SSLSCAN_LAB_SCOPE = Path("examples/scope.lab.sslscan.yaml")
 TLSX_LAB_SCOPE = Path("examples/scope.lab.tlsx.yaml")
 WHATWEB_LAB_SCOPE = Path("examples/scope.lab.whatweb.yaml")
 HPING3_LAB_SCOPE = Path("examples/scope.lab.hping3.yaml")
+ONESIXTYONE_LAB_SCOPE = Path("examples/scope.lab.onesixtyone.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -54,6 +56,7 @@ LAB_SCOPES = {
     "tlsx": TLSX_LAB_SCOPE,
     "whatweb": WHATWEB_LAB_SCOPE,
     "hping3": HPING3_LAB_SCOPE,
+    "onesixtyone": ONESIXTYONE_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -74,6 +77,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "tlsx",
         "whatweb",
         "hping3",
+        "onesixtyone",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -165,7 +169,8 @@ def loopback_lab_listeners(
     no live hosts and prove fails closed. This is lab fixture, not a
     forged scanner result. httpx and whatweb need ``loopback_http_lab``
     (HTTP 200). sslscan and tlsx need ``loopback_tls_lab`` (a TLS
-    handshake). Neither is this bare accept.
+    handshake). onesixtyone needs ``loopback_snmp_lab`` (an SNMPv1
+    GetResponse). Neither is this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -340,6 +345,98 @@ def loopback_tls_lab(
                     pass
 
 
+def _snmpv1_get_response(community: bytes, descr: bytes) -> bytes:
+    """Minimal SNMPv1 GetResponse onesixtyone can decode.
+
+    onesixtyone treats a 4-byte request-id of 0xffffffff as parse
+    failure (negative INTEGER). Use a one-byte positive id.
+    """
+    oid = bytes([0x06, 0x08, 0x2B, 0x06, 0x01, 0x02, 0x01, 0x01, 0x01, 0x00])
+    value = bytes([0x04, len(descr)]) + descr
+    varbind = bytes([0x30, len(oid) + len(value)]) + oid + value
+    vblist = bytes([0x30, len(varbind)]) + varbind
+    pdu_inner = bytes([0x02, 0x01, 0x01, 0x02, 0x01, 0x00, 0x02, 0x01, 0x00]) + vblist
+    pdu = bytes([0xA2, len(pdu_inner)]) + pdu_inner
+    body = bytes([0x02, 0x01, 0x00, 0x04, len(community)]) + community + pdu
+    if max(len(body), len(descr), len(community)) > 127:
+        raise RunnerError("SNMP lab BER length overflow")
+    return bytes([0x30, len(body)]) + body
+
+
+def _snmpv1_community(request: bytes) -> bytes | None:
+    try:
+        if len(request) < 8 or request[0] != 0x30:
+            return None
+        index = 2
+        if request[index] != 0x02:
+            return None
+        index += 2 + request[index + 1]
+        if request[index] != 0x04:
+            return None
+        length = request[index + 1]
+        start = index + 2
+        end = start + length
+        if length == 0 or end > len(request):
+            return None
+        return request[start:end]
+    except (IndexError, TypeError):
+        return None
+
+
+@contextmanager
+def loopback_snmp_lab(
+    hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
+    port: int = RUSTSCAN_LAB_PORT,
+) -> Iterator[tuple[str, int]]:
+    """Serve SNMPv1 GetResponse on loopback tiles so onesixtyone can observe communities.
+
+    A UDP echo is not enough: onesixtyone prints the source IP on any
+    datagram, but ``ip [community] sysDescr`` only after a GetResponse
+    decode. This is lab fixture, not a forged scanner result.
+    """
+    sockets: list[socket.socket] = []
+    stop = threading.Event()
+
+    def serve(sock: socket.socket) -> None:
+        while not stop.is_set():
+            try:
+                data, addr = sock.recvfrom(4096)
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+            community = _snmpv1_community(data)
+            if not community:
+                continue
+            try:
+                sock.sendto(_snmpv1_get_response(community, b"covey-snmp-lab"), addr)
+            except OSError:
+                break
+
+    try:
+        for host in hosts:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError as exc:
+                sock.close()
+                raise RunnerError(
+                    f"SNMP lab cannot bind UDP {host}:{port}: {exc}"
+                ) from exc
+            sock.settimeout(0.25)
+            sockets.append(sock)
+            threading.Thread(target=serve, args=(sock,), daemon=True).start()
+        yield hosts[0], port
+    finally:
+        stop.set()
+        for sock in sockets:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
 def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
     name = adapter.name
     if name == "nmap":
@@ -362,6 +459,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_whatweb(install_if_missing=install_if_missing)
     if name == "hping3":
         return ensure_hping3(install_if_missing=install_if_missing)
+    if name == "onesixtyone":
+        return ensure_onesixtyone(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -419,6 +518,9 @@ def run_prove(
             report = _execute()
     elif plugin.name in {"sslscan", "tlsx"}:
         with loopback_tls_lab(port=_lab_port(scope)):
+            report = _execute()
+    elif plugin.name == "onesixtyone":
+        with loopback_snmp_lab(port=_lab_port(scope)):
             report = _execute()
     elif plugin.name in {"rustscan", "naabu", "nping"}:
         with loopback_lab_listeners(port=_lab_port(scope)):

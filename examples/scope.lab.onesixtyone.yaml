@@ -1,0 +1,28 @@
+# Evergreen Covey — signed demo SCOPE for the onesixtyone loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. onesixtyone is an SNMP community sweeper, so prove
+# serves SNMPv1 GetResponse on 18080 on the first usable host of each
+# /30. A UDP echo is not enough — onesixtyone prints the source IP on
+# any datagram; parse requires ip [community] sysDescr.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey onesixtyone loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: onesixtyone
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+pass2:
+  ports: '18080'
+targets:
+- cidr: 127.0.0.0/28
+signature: 91c8e6de7f6f9e8d22ab66130d312faab78250237c1e39379da6872f867ec82b

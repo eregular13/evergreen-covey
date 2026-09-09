@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "evergreen-covey"
 version = "0.1.0"
-description = "SCOPE-gated Lego for sharded BYO scanner workers. 20 live adapters; nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, and hping3 are e2e-proven."
+description = "SCOPE-gated Lego for sharded BYO scanner workers. 20 live adapters; nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, and onesixtyone are e2e-proven."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
@@ -36,7 +36,7 @@ where = ["src"]
 testpaths = ["tests"]
 pythonpath = [".", "src"]
 markers = [
-  "integration: end-to-end prove that invokes BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, or hping3 through the Covey runner",
+  "integration: end-to-end prove that invokes BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, or onesixtyone through the Covey runner",
 ]
 filterwarnings = [
   "ignore::DeprecationWarning",
