@@ -147,6 +147,39 @@ def read_artifact_blob(artifact_dir: Path) -> str:
     return "\n".join(chunks)
 
 
+def open_port_row(
+    address: str,
+    port: str | int,
+    *,
+    protocol: str = "tcp",
+    service: str = "",
+    product: str = "",
+) -> dict[str, str]:
+    """Conservative open-port observation. Never a vuln / OE / POAM claim."""
+    row = {
+        "address": str(address),
+        "protocol": (protocol or "tcp").lower(),
+        "port": str(port),
+        "state": "open",
+        "service": service or "",
+    }
+    if product:
+        row["product"] = product
+    return row
+
+
+def unique_services(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    for row in rows:
+        key = (row["address"], row["protocol"], row["port"])
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
+
+
 def parse_masscan_json(text: str) -> list[str]:
     hosts: list[str] = []
     seen: set[str] = set()
@@ -248,6 +281,11 @@ class LiveAdapter:
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return unique_ipv4s(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        """Open ports/services from artifacts. Empty when the tool has no port surface."""
+        del artifact_dir
+        return []
 
     def stage_files(self, stage: str, target: str, out_prefix: str) -> dict[str, str]:
         del stage, target, out_prefix

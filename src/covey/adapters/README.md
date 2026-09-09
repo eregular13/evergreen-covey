@@ -16,6 +16,7 @@ Implement `covey.adapters.base.Adapter`:
 | `pass2_argv_template(out_prefix)` | Deepen template; include a `{hosts}` token when the CLI takes hosts on argv. |
 | `pass2_argv(hosts, out_prefix)` | Concrete deepen argv for pass1-live hosts only. |
 | `parse_live_hosts(artifact_dir)` | Read XML/JSON/stdout the runner already landed. |
+| `parse_services(artifact_dir)` | Optional. Open ports from the same artifacts. Empty when the tool has no port surface. |
 
 Optional `stage_files(stage, target, out_prefix)` may return relative
 path → text sidecars (host lists, community files). The runner writes them

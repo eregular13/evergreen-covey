@@ -9,8 +9,10 @@ from pathlib import Path
 from covey.adapters.common import (
     LiveAdapter,
     is_skipped_ip,
+    open_port_row,
     read_artifact_blob,
     require_target_prefix,
+    unique_services,
 )
 from covey.errors import AdapterError
 
@@ -22,6 +24,9 @@ _OPEN_IP_PORT = re.compile(
 )
 _OPEN_FROM = re.compile(
     r"(?i)^TCP open\b.*\bfrom\s+(\d{1,3}(?:\.\d{1,3}){3})\b"
+)
+_OPEN_FROM_PORT = re.compile(
+    r"(?i)^TCP open\b.*\[(\d+)\].*\bfrom\s+(\d{1,3}(?:\.\d{1,3}){3})\b"
 )
 
 # Source outside the signed 127.0.0.0/28 lab so a tile that contains
@@ -46,6 +51,27 @@ def parse_unicornscan_live_hosts(text: str) -> list[str]:
         seen.add(ip)
         hosts.append(ip)
     return hosts
+
+
+def parse_unicornscan_services(text: str) -> list[dict[str, str]]:
+    """TCP-open ports unicornscan printed. ``TCP closed`` is ignored."""
+    services: list[dict[str, str]] = []
+    for raw in (text or "").splitlines():
+        line = raw.strip()
+        if not line.lower().startswith("tcp open"):
+            continue
+        direct = _OPEN_IP_PORT.match(line)
+        if direct:
+            ip, port = direct.group(1), direct.group(2)
+            if not is_skipped_ip(ip):
+                services.append(open_port_row(ip, port))
+            continue
+        reported = _OPEN_FROM_PORT.match(line)
+        if reported:
+            port, ip = reported.group(1), reported.group(2)
+            if not is_skipped_ip(ip):
+                services.append(open_port_row(ip, port))
+    return unique_services(services)
 
 
 def _is_loopback_token(token: str) -> bool:
@@ -109,6 +135,9 @@ class UnicornscanAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_unicornscan_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_unicornscan_services(read_artifact_blob(artifact_dir))
 
 
 def get_adapter() -> UnicornscanAdapter:

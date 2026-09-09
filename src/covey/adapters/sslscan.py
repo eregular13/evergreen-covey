@@ -9,8 +9,10 @@ from covey.adapters.common import (
     LiveAdapter,
     first_host,
     is_skipped_ip,
+    open_port_row,
     read_artifact_blob,
     require_target_prefix,
+    unique_services,
 )
 from covey.errors import AdapterError
 
@@ -22,6 +24,13 @@ _CONNECTED = re.compile(
 # Successful XML: <ssltest host="10.9.8.7" sniname="…" port="443">
 _XML_HOST = re.compile(
     r'<ssltest\b[^>]*\bhost="(\d{1,3}(?:\.\d{1,3}){3})"',
+)
+_TESTING_PORT = re.compile(
+    r"^Testing SSL server (\d{1,3}(?:\.\d{1,3}){3}) on port (\d+)\s*$",
+    re.MULTILINE,
+)
+_XML_HOST_PORT = re.compile(
+    r'<ssltest\b[^>]*\bhost="(\d{1,3}(?:\.\d{1,3}){3})"[^>]*\bport="(\d+)"',
 )
 
 
@@ -42,6 +51,22 @@ def parse_sslscan_live_hosts(text: str) -> list[str]:
         seen.add(ip)
         hosts.append(ip)
     return hosts
+
+
+def parse_sslscan_services(text: str) -> list[dict[str, str]]:
+    """TLS ports sslscan connected to. Connection-refused ERROR IPs are ignored."""
+    services: list[dict[str, str]] = []
+    for match in _TESTING_PORT.finditer(text or ""):
+        ip, port = match.group(1), match.group(2)
+        if is_skipped_ip(ip):
+            continue
+        services.append(open_port_row(ip, port, service="tls"))
+    for match in _XML_HOST_PORT.finditer(text or ""):
+        ip, port = match.group(1), match.group(2)
+        if is_skipped_ip(ip):
+            continue
+        services.append(open_port_row(ip, port, service="tls"))
+    return unique_services(services)
 
 
 class SslscanAdapter(LiveAdapter):
@@ -92,6 +117,9 @@ class SslscanAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_sslscan_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_sslscan_services(read_artifact_blob(artifact_dir))
 
 
 def get_adapter() -> SslscanAdapter:

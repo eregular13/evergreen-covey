@@ -5,12 +5,19 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from covey.adapters.common import LiveAdapter, read_artifact_blob, require_target_prefix, tile_hosts
+from covey.adapters.common import (
+    LiveAdapter,
+    open_port_row,
+    read_artifact_blob,
+    require_target_prefix,
+    tile_hosts,
+    unique_services,
+)
 from covey.errors import AdapterError
 
 # Unprivileged --tcp-connect success: "Handshake with 127.0.0.1:18080 completed"
 _HANDSHAKE = re.compile(
-    r"Handshake with (\d{1,3}(?:\.\d{1,3}){3}):\d+ completed",
+    r"Handshake with (\d{1,3}(?:\.\d{1,3}){3}):(\d+) completed",
 )
 # ICMP Echo reply (argv+unit fixture / privileged --icmp): source is first IP.
 _ECHO_REPLY = re.compile(
@@ -36,6 +43,17 @@ def parse_nping_live_hosts(text: str) -> list[str]:
         seen.add(ip)
         hosts.append(ip)
     return hosts
+
+
+def parse_nping_services(text: str) -> list[dict[str, str]]:
+    """TCP-connect handshakes nping completed. Refused ``RCVD`` lines are ignored."""
+    services: list[dict[str, str]] = []
+    for line in (text or "").splitlines():
+        match = _HANDSHAKE.search(line)
+        if not match:
+            continue
+        services.append(open_port_row(match.group(1), match.group(2)))
+    return unique_services(services)
 
 
 class NpingAdapter(LiveAdapter):
@@ -88,6 +106,9 @@ class NpingAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_nping_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_nping_services(read_artifact_blob(artifact_dir))
 
 
 def get_adapter() -> NpingAdapter:

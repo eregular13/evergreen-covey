@@ -9,9 +9,11 @@ from covey.adapters.common import (
     LiveAdapter,
     hosts_file_path,
     is_skipped_ip,
+    open_port_row,
     read_artifact_blob,
     require_target_prefix,
     tile_hosts,
+    unique_services,
 )
 from covey.errors import AdapterError
 
@@ -36,6 +38,20 @@ def parse_tlsx_live_hosts(text: str) -> list[str]:
         seen.add(ip)
         hosts.append(ip)
     return hosts
+
+
+def parse_tlsx_services(text: str) -> list[dict[str, str]]:
+    """TLS ``ip:port`` lines tlsx printed. Banner/SAN IPs are ignored."""
+    services: list[dict[str, str]] = []
+    for line in (text or "").splitlines():
+        match = _IP_PORT.match(line.strip())
+        if not match:
+            continue
+        ip = match.group(1)
+        if is_skipped_ip(ip):
+            continue
+        services.append(open_port_row(ip, match.group(2), service="tls"))
+    return unique_services(services)
 
 
 class TlsxAdapter(LiveAdapter):
@@ -74,6 +90,9 @@ class TlsxAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_tlsx_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_tlsx_services(read_artifact_blob(artifact_dir))
 
     def stage_files(self, stage: str, target: str, out_prefix: str) -> dict[str, str]:
         if stage == "pass2":

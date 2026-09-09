@@ -5,7 +5,13 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from covey.adapters.common import LiveAdapter, read_artifact_blob, require_target_prefix
+from covey.adapters.common import (
+    LiveAdapter,
+    open_port_row,
+    read_artifact_blob,
+    require_target_prefix,
+    unique_services,
+)
 from covey.errors import AdapterError
 
 # Silent/file lines: "127.0.0.1:18080"
@@ -28,6 +34,17 @@ def parse_naabu_live_hosts(text: str) -> list[str]:
         seen.add(ip)
         hosts.append(ip)
     return hosts
+
+
+def parse_naabu_services(text: str) -> list[dict[str, str]]:
+    """Open ``ip:port`` lines naabu printed. Banner IPs are ignored."""
+    services: list[dict[str, str]] = []
+    for line in (text or "").splitlines():
+        match = _IP_PORT.match(line.strip())
+        if not match:
+            continue
+        services.append(open_port_row(match.group(1), match.group(2)))
+    return unique_services(services)
 
 
 class NaabuAdapter(LiveAdapter):
@@ -66,6 +83,9 @@ class NaabuAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_naabu_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_naabu_services(read_artifact_blob(artifact_dir))
 
 
 def get_adapter() -> NaabuAdapter:

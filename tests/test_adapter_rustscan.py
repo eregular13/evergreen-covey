@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from covey.adapters.rustscan import RustscanAdapter, parse_rustscan_live_hosts
+from covey.adapters.rustscan import (
+    RustscanAdapter,
+    parse_rustscan_live_hosts,
+    parse_rustscan_services,
+)
 from covey.errors import AdapterError
 
 
@@ -45,6 +49,13 @@ def test_parse_greppable_and_open_lines():
         ]
     )
     assert parse_rustscan_live_hosts(text) == ["127.0.0.1", "10.9.8.7", "10.9.8.8"]
+    services = parse_rustscan_services(text)
+    assert {(row["address"], row["port"]) for row in services} == {
+        ("127.0.0.1", "18080"),
+        ("10.9.8.7", "80"),
+        ("10.9.8.7", "443"),
+        ("10.9.8.8", "22"),
+    }
 
 
 def test_parse_live_hosts_from_stdout(tmp_path: Path):
