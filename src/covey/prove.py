@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, or onesixtyone; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, or nbtscan; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 import shutil
 import socket
 import ssl
+import struct
 import subprocess
 import tempfile
 import threading
@@ -23,6 +24,7 @@ from covey.runner import (
     ensure_hping3,
     ensure_httpx,
     ensure_naabu,
+    ensure_nbtscan,
     ensure_nmap,
     ensure_nping,
     ensure_onesixtyone,
@@ -45,6 +47,7 @@ TLSX_LAB_SCOPE = Path("examples/scope.lab.tlsx.yaml")
 WHATWEB_LAB_SCOPE = Path("examples/scope.lab.whatweb.yaml")
 HPING3_LAB_SCOPE = Path("examples/scope.lab.hping3.yaml")
 ONESIXTYONE_LAB_SCOPE = Path("examples/scope.lab.onesixtyone.yaml")
+NBTSCAN_LAB_SCOPE = Path("examples/scope.lab.nbtscan.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -57,6 +60,7 @@ LAB_SCOPES = {
     "whatweb": WHATWEB_LAB_SCOPE,
     "hping3": HPING3_LAB_SCOPE,
     "onesixtyone": ONESIXTYONE_LAB_SCOPE,
+    "nbtscan": NBTSCAN_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -78,6 +82,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "whatweb",
         "hping3",
         "onesixtyone",
+        "nbtscan",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -170,7 +175,8 @@ def loopback_lab_listeners(
     forged scanner result. httpx and whatweb need ``loopback_http_lab``
     (HTTP 200). sslscan and tlsx need ``loopback_tls_lab`` (a TLS
     handshake). onesixtyone needs ``loopback_snmp_lab`` (an SNMPv1
-    GetResponse). Neither is this bare accept.
+    GetResponse). nbtscan needs ``loopback_nbstat_lab`` (a NetBIOS
+    name table on UDP/137). Neither is this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -437,6 +443,141 @@ def loopback_snmp_lab(
                 pass
 
 
+NBTSCAN_LAB_PORT = 137
+
+
+def _nbstat_response(request: bytes, *, name: bytes = b"COVEYLAB") -> bytes | None:
+    """Minimal NBSTAT (node status) reply Debian nbtscan 1.7 can decode.
+
+    A UDP echo is not enough: nbtscan prints ``ip:<unknown>`` on any
+    datagram. Only a name-table entry counts as live.
+    """
+    if len(request) < 50 or request[46:48] != b"\x00\x21":
+        return None
+    label = name[:15].ljust(15, b" ") + b"\x00"
+    names = label + b"\x00\x00"
+    footer = bytes([0x00, 0x11, 0x22, 0x33, 0x44, 0x55]) + bytes(44)
+    rdata_len = 1 + len(names) + len(footer)
+    return (
+        request[:2]
+        + struct.pack(">HHHHH", 0x8400, 0, 1, 0, 0)
+        + request[12:46]
+        + struct.pack(">HHIH", 0x0021, 0x0001, 0, rdata_len)
+        + bytes([1])
+        + names
+        + footer
+    )
+
+
+def _unprivileged_port_start() -> int | None:
+    path = Path("/proc/sys/net/ipv4/ip_unprivileged_port_start")
+    try:
+        return int(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _allow_unprivileged_nbios() -> int | None:
+    """Let this VM bind UDP/137 without root. Never vendors a binary."""
+    current = _unprivileged_port_start()
+    if current is not None and current <= NBTSCAN_LAB_PORT:
+        return None
+    sysctl = shutil.which("sysctl") or "/usr/sbin/sysctl"
+    if not Path(sysctl).is_file():
+        raise RunnerError(
+            "NetBIOS lab cannot bind UDP/137 and sysctl is not available"
+        )
+    completed = subprocess.run(
+        [
+            "sudo",
+            sysctl,
+            "-w",
+            f"net.ipv4.ip_unprivileged_port_start={NBTSCAN_LAB_PORT}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise RunnerError(
+            "NetBIOS lab cannot lower ip_unprivileged_port_start to bind "
+            "UDP/137: " + (completed.stderr or completed.stdout)[-400:]
+        )
+    return current
+
+
+def _restore_unprivileged_port_start(previous: int | None) -> None:
+    if previous is None:
+        return
+    sysctl = shutil.which("sysctl") or "/usr/sbin/sysctl"
+    if not Path(sysctl).is_file():
+        return
+    subprocess.run(
+        ["sudo", sysctl, "-w", f"net.ipv4.ip_unprivileged_port_start={previous}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+
+@contextmanager
+def loopback_nbstat_lab(
+    hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
+    port: int = NBTSCAN_LAB_PORT,
+) -> Iterator[tuple[str, int]]:
+    """Serve NBSTAT on loopback tiles so nbtscan can observe a name table.
+
+    A UDP echo is not enough: nbtscan prints the source IP on any
+    datagram as ``ip:<unknown>``. Parse requires a real NetBIOS name.
+    This is lab fixture, not a forged scanner result. UDP/137 is
+    privileged; prove may lower ``ip_unprivileged_port_start`` on this
+    VM only.
+    """
+    previous = _allow_unprivileged_nbios()
+    sockets: list[socket.socket] = []
+    stop = threading.Event()
+
+    def serve(sock: socket.socket) -> None:
+        while not stop.is_set():
+            try:
+                data, addr = sock.recvfrom(4096)
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+            reply = _nbstat_response(data)
+            if not reply:
+                continue
+            try:
+                sock.sendto(reply, addr)
+            except OSError:
+                break
+
+    try:
+        for host in hosts:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError as exc:
+                sock.close()
+                raise RunnerError(
+                    f"NetBIOS lab cannot bind UDP {host}:{port}: {exc}"
+                ) from exc
+            sock.settimeout(0.25)
+            sockets.append(sock)
+            threading.Thread(target=serve, args=(sock,), daemon=True).start()
+        yield hosts[0], port
+    finally:
+        stop.set()
+        for sock in sockets:
+            try:
+                sock.close()
+            except OSError:
+                pass
+        _restore_unprivileged_port_start(previous)
+
+
 def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
     name = adapter.name
     if name == "nmap":
@@ -461,6 +602,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_hping3(install_if_missing=install_if_missing)
     if name == "onesixtyone":
         return ensure_onesixtyone(install_if_missing=install_if_missing)
+    if name == "nbtscan":
+        return ensure_nbtscan(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -521,6 +664,9 @@ def run_prove(
             report = _execute()
     elif plugin.name == "onesixtyone":
         with loopback_snmp_lab(port=_lab_port(scope)):
+            report = _execute()
+    elif plugin.name == "nbtscan":
+        with loopback_nbstat_lab():
             report = _execute()
     elif plugin.name in {"rustscan", "naabu", "nping"}:
         with loopback_lab_listeners(port=_lab_port(scope)):

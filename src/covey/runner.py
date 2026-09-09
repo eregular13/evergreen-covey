@@ -722,6 +722,37 @@ def ensure_onesixtyone(*, install_if_missing: bool = False) -> ExecSpec:
     )
 
 
+def ensure_nbtscan(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO nbtscan. Optionally apt-install onto this VM only."""
+    try:
+        return resolve_exec("nbtscan")
+    except RunnerError:
+        if not install_if_missing:
+            raise
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install nbtscan: apt-get not available")
+    update = subprocess.run(
+        ["sudo", "apt-get", "update"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if update.returncode != 0:
+        raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+    install = subprocess.run(
+        ["sudo", "apt-get", "install", "-y", "nbtscan"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        raise RunnerError(f"apt-get install nbtscan failed: {install.stderr[-400:]}")
+    found = shutil.which("nbtscan")
+    if not found:
+        raise RunnerError("nbtscan installed but still not on PATH")
+    return ExecSpec(kind="local", binary=found, display=found, entrypoint="nbtscan")
+
+
 def _hping3_path() -> str | None:
     found = shutil.which("hping3")
     if found:

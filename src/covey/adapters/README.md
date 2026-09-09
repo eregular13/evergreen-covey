@@ -153,10 +153,24 @@ may `apt-get install onesixtyone` onto **this VM only**.
 
 `python -m covey prove --adapter onesixtyone`
 
+## nbtscan (twelfth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_NBTSCAN`, or the prove path
+may `apt-get install nbtscan` onto **this VM only**.
+
+- pass1: `-s :` NetBIOS name sweep of the tile CIDR
+- pass2: `-v -s :` against pass1-live hosts
+- prove serves NBSTAT on UDP/137 (NetBIOS probe ≠ UDP echo)
+- parse requires a real name-table entry; `ip:<unknown>` and MAC lines
+  are ignored. UDP/137 is privileged; prove may lower
+  `ip_unprivileged_port_start` on this VM only.
+
+`python -m covey prove --adapter nbtscan`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-ike-scan, nbtscan, braa, svmap
+ike-scan, braa, svmap
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 

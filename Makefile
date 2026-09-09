@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -88,6 +88,12 @@ prove-hping3: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-onesixtyone: venv
 	$(PY) -m covey prove --adapter onesixtyone --out out/onesixtyone
+
+# Twelfth e2e-proven adapter. BYO nbtscan (apt on this VM only).
+# Needs an NBSTAT name-table lab on UDP/137, not a UDP echo.
+# Does not replace `make prove` (nmap stays the default).
+prove-nbtscan: venv
+	$(PY) -m covey prove --adapter nbtscan --out out/nbtscan
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

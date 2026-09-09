@@ -6,16 +6,17 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
-`whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh).** The
-other 9 ids are argv+unit only. Source of
+`whatweb` (ninth), `hping3` (tenth), `onesixtyone` (eleventh),
+`nbtscan` (twelfth).** The
+other 8 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
 (GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
-whatweb (apt), hping3 (apt + `setcap` for raw sockets), or onesixtyone
-(apt) **on that machine only** — never into git.
+whatweb (apt), hping3 (apt + `setcap` for raw sockets), onesixtyone
+(apt), or nbtscan (apt) **on that machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -36,7 +37,7 @@ forbidden.
 | `nping` | `nping` | `--tcp-connect -p <SCOPE ports>` tile hosts (**5th e2e-proven**) | `--tcp-connect` live hosts | `Handshake with ip:port completed` (not refused `RCVD`) | `COVEY_NPING` |
 | `hping3` | `hping3` | `--icmp` first usable tile host (**10th e2e-proven**) | `--syn -p <SCOPE port or 80>` first live host | `ip=` reply lines (not HPING banner) | `COVEY_HPING3` |
 | `ike-scan` | `ike-scan` | IKE Main Mode on the CIDR | `--aggressive --id=vpn` hosts | handshake IPv4 | `COVEY_IKE_SCAN` |
-| `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR | `-v` on live hosts | leading IPv4 / name table | `COVEY_NBTSCAN` |
+| `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR (**12th e2e-proven**) | `-v` on live hosts | leading IPv4 / name table (not UDP-echo `ip:<unknown>` / MAC) | `COVEY_NBTSCAN` |
 | `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file `-p <SCOPE port>` (**11th e2e-proven**) | extra communities on live hosts | `ip [community] sysDescr` (not UDP-echo IP / decode error) | `COVEY_ONESIXTYONE` |
 | `braa` | `braa` | `public@first-last:sysDescr` | sysDescr + sysName per host | `ip:oid:value` | `COVEY_BRAA` |
 | `svmap` | `svmap` | SIP sweep of the CIDR (`sipvicious`) | `--fp` fingerprint live hosts | SIP device IPv4 | `COVEY_SVMAP` |
@@ -78,6 +79,15 @@ forbidden.
   lines and the hosts sidecar are not live hosts. Pass1 uses SCOPE
   `pass2.ports` (lab default `18080`) via `-p`. Default SNMP port is
   `161` when SCOPE omits the field.
+- **nbtscan**: NetBIOS name sweeper. Twelfth e2e-proven adapter
+  (`python -m covey prove --adapter nbtscan` / `make prove-nbtscan`).
+  Prove serves NBSTAT on UDP/137 on the same loopback addresses rustscan
+  / naabu / nping / httpx bind. A UDP echo is not enough: nbtscan
+  prints the source IP on any datagram as `ip:<unknown>`. Parse
+  requires a real name-table entry. MAC sidecar lines and the scan
+  banner are not live hosts. UDP/137 is privileged; prove may lower
+  `ip_unprivileged_port_start` on this VM only. Lab SCOPE omits
+  `pass2.ports` — NetBIOS is not a TCP port surface.
 - **onesixtyone** / **httpx** / **tlsx**: the runner writes `{out_prefix}.hosts`
   (and `.comm` for onesixtyone) next to artifacts before spawn. argv still
   invokes only that tool.
