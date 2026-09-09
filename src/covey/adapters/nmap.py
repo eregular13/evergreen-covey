@@ -89,6 +89,20 @@ class NmapAdapter:
             return parse_gnmap_live_hosts(gnmap_path)
         return []
 
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        xml_path = artifact_dir / "scan.xml"
+        if xml_path.is_file():
+            try:
+                found = parse_nmap_xml_services(xml_path)
+                if found:
+                    return found
+            except AdapterError:
+                pass
+        gnmap_path = artifact_dir / "scan.gnmap"
+        if gnmap_path.is_file():
+            return parse_gnmap_services(gnmap_path)
+        return []
+
 
 def parse_nmap_xml_live_hosts(path: Path) -> list[str]:
     try:

@@ -8,8 +8,10 @@ from pathlib import Path
 from covey.adapters.common import (
     LiveAdapter,
     is_skipped_ip,
+    open_port_row,
     read_artifact_blob,
     require_target_prefix,
+    unique_services,
 )
 from covey.errors import AdapterError
 
@@ -50,6 +52,20 @@ def parse_svmap_live_hosts(text: str) -> list[str]:
     return hosts
 
 
+def parse_svmap_services(text: str) -> list[dict[str, str]]:
+    """SIP ``ip:port`` table cells svmap printed with a real User-Agent."""
+    services: list[dict[str, str]] = []
+    for raw in (text or "").splitlines():
+        match = _DEVICE.match(raw.strip())
+        if not match:
+            continue
+        ip, port, ua = match.group(1), match.group(2), match.group(3).strip().lower()
+        if ua in _REJECT_UA or is_skipped_ip(ip):
+            continue
+        services.append(open_port_row(ip, port, protocol="udp", service="sip"))
+    return unique_services(services)
+
+
 class SvmapAdapter(LiveAdapter):
     """SIP OPTIONS sweeper. pass2 re-scans pass1-live hosts.
 
@@ -81,6 +97,9 @@ class SvmapAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_svmap_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_svmap_services(read_artifact_blob(artifact_dir))
 
 
 def get_adapter() -> SvmapAdapter:

@@ -7,11 +7,32 @@ import pytest
 import yaml
 
 from covey.adapters.nmap import parse_gnmap_services, parse_nmap_xml_services
+from covey.adapters.registry import E2E_PROVEN_ADAPTERS
 from covey.errors import ExportError
 from covey.export import export_pack
 from covey.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures"
+ADAPTER_FIXTURES = FIXTURES / "adapters"
+
+# stdout.log-class e2e-proven adapters. nmap is XML/gnmap (see _seed_run).
+STDOUT_FIXTURES: dict[str, str] = {
+    "rustscan": "rustscan.txt",
+    "fping": "fping.txt",
+    "naabu": "naabu.txt",
+    "nping": "nping.txt",
+    "httpx": "httpx.txt",
+    "sslscan": "sslscan.txt",
+    "tlsx": "tlsx.txt",
+    "whatweb": "whatweb.txt",
+    "hping3": "hping3.txt",
+    "onesixtyone": "onesixtyone.txt",
+    "nbtscan": "nbtscan.txt",
+    "braa": "braa.txt",
+    "ike-scan": "ike-scan.txt",
+    "svmap": "svmap.txt",
+    "unicornscan": "unicornscan.txt",
+}
 
 
 def _seed_run(tmp_path: Path) -> Path:
@@ -79,6 +100,60 @@ def _seed_run(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return tmp_path
+
+
+def _seed_stdout_run(tmp_path: Path, adapter: str, fixture_name: str) -> Path:
+    shards = tmp_path / "shards"
+    p1 = shards / "p1-s00"
+    p1.mkdir(parents=True)
+    stdout = (ADAPTER_FIXTURES / fixture_name).read_text(encoding="utf-8")
+    (p1 / "stdout.log").write_text(stdout, encoding="utf-8")
+    (tmp_path / "plan.json").write_text(
+        json.dumps(
+            {
+                "adapter": adapter,
+                "created_at": "2026-09-08T00:00:00+00:00",
+                "signer": "prove-lab",
+                "purpose": f"evergreen-covey {adapter} export",
+                "shards": ["127.0.0.0/30"],
+                "workers": [],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run_report.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "exec": adapter,
+                "max_workers": 1,
+                "pass1": [
+                    {
+                        "id": "p1-s00",
+                        "shard_id": "s00",
+                        "artifact_dir": str(p1),
+                        "live_hosts": [],
+                        "skipped": False,
+                    }
+                ],
+                "pass2": [],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return tmp_path
+
+
+def _read_jsonl(path: Path) -> list[dict]:
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
 
 
 def test_parse_open_services_ignores_closed():
@@ -158,6 +233,105 @@ def test_export_writes_pack_layout(tmp_path: Path):
     assert all(row["severity"] == "info" for row in findings)
     assert all("control_failure" in row["not_claimed"] for row in findings)
     assert all(row.get("port") == 22 for row in findings)
+
+
+def test_export_rustscan_stdout_writes_hosts_and_services(tmp_path: Path):
+    run = _seed_stdout_run(tmp_path, "rustscan", "rustscan.txt")
+    summary = export_pack(run)
+    pack = Path(summary["pack"])
+    meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
+    assert meta["adapter"] == "rustscan"
+    assert meta["honesty"]["surface_map"] is True
+    assert meta["honesty"]["honeypot_validated"] is False
+    assert meta["honesty"]["control_operating_effectiveness"] is False
+    assert meta["ingest"]["riskready_post"] is False
+    assets = _read_jsonl(pack / "assets.jsonl")
+    hosts = {row["address"] for row in assets if row["kind"] == "host"}
+    services = [row for row in assets if row["kind"] == "service"]
+    assert hosts == {"10.9.8.7", "10.9.8.8"}
+    assert {(row["address"], row["port"]) for row in services} == {
+        ("10.9.8.7", 80),
+        ("10.9.8.7", 443),
+        ("10.9.8.8", 22),
+    }
+    assert all(row["state"] == "open" for row in services)
+    findings = _read_jsonl(pack / "findings.jsonl")
+    assert findings
+    assert all(row["claim"] == "open_port_observed" for row in findings)
+    assert all(row["severity"] == "info" for row in findings)
+    assert all("vulnerability" in row["not_claimed"] for row in findings)
+    assert all("control_operating_effectiveness" in row["not_claimed"] for row in findings)
+
+
+def test_export_httpx_stdout_writes_hosts_and_https_services(tmp_path: Path):
+    run = _seed_stdout_run(tmp_path, "httpx", "httpx.txt")
+    summary = export_pack(run)
+    pack = Path(summary["pack"])
+    assets = _read_jsonl(pack / "assets.jsonl")
+    hosts = {row["address"] for row in assets if row["kind"] == "host"}
+    services = [row for row in assets if row["kind"] == "service"]
+    assert hosts == {"10.9.8.7", "10.9.8.8"}
+    assert {(row["address"], row["port"], row["service"]) for row in services} == {
+        ("10.9.8.7", 443, "https"),
+        ("10.9.8.8", 443, "https"),
+    }
+    findings = _read_jsonl(pack / "findings.jsonl")
+    assert all(row["claim"] == "open_port_observed" for row in findings)
+    assert all(row.get("port") == 443 for row in findings)
+
+
+def test_export_unicornscan_stdout_writes_tcp_open_only(tmp_path: Path):
+    run = _seed_stdout_run(tmp_path, "unicornscan", "unicornscan.txt")
+    (run / "shards" / "p1-s00" / "stdout.log").write_text(
+        "\n".join(
+            [
+                "TCP closed 10.9.8.9:80  ttl 64",
+                "TCP open 10.9.8.7:80  ttl 64",
+                "TCP open         unknown[18080]		from 127.0.0.1  ttl 127",
+                "TCP open 10.9.8.8:443  ttl 64",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    summary = export_pack(run)
+    pack = Path(summary["pack"])
+    assets = _read_jsonl(pack / "assets.jsonl")
+    hosts = {row["address"] for row in assets if row["kind"] == "host"}
+    services = [row for row in assets if row["kind"] == "service"]
+    assert hosts == {"10.9.8.7", "127.0.0.1", "10.9.8.8"}
+    assert {(row["address"], row["port"]) for row in services} == {
+        ("10.9.8.7", 80),
+        ("127.0.0.1", 18080),
+        ("10.9.8.8", 443),
+    }
+    assert all(row["protocol"] == "tcp" for row in services)
+    assert "10.9.8.9" not in hosts
+
+
+def test_stdout_fixtures_cover_non_nmap_e2e_proven():
+    assert set(STDOUT_FIXTURES) == set(E2E_PROVEN_ADAPTERS) - {"nmap"}
+
+
+@pytest.mark.parametrize("adapter", E2E_PROVEN_ADAPTERS)
+def test_export_normalizes_all_e2e_proven_adapters(tmp_path: Path, adapter: str):
+    if adapter == "nmap":
+        run = _seed_run(tmp_path)
+    else:
+        run = _seed_stdout_run(tmp_path, adapter, STDOUT_FIXTURES[adapter])
+    summary = export_pack(run)
+    pack = Path(summary["pack"])
+    meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
+    assert meta["adapter"] == adapter
+    assert meta["honesty"]["surface_map"] is True
+    assert meta["honesty"]["control_operating_effectiveness"] is False
+    assert "vulnerability" not in json.dumps(meta["honesty"])
+    assets = _read_jsonl(pack / "assets.jsonl")
+    hosts = [row for row in assets if row["kind"] == "host"]
+    assert hosts, f"{adapter} export must write at least one host"
+    findings = _read_jsonl(pack / "findings.jsonl")
+    assert all(row["claim"] == "open_port_observed" for row in findings)
+    assert all("vulnerability" in row["not_claimed"] for row in findings)
 
 
 def test_export_no_findings_without_open_ports(tmp_path: Path):

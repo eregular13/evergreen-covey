@@ -8,16 +8,18 @@ from pathlib import Path
 from covey.adapters.common import (
     LiveAdapter,
     is_skipped_ip,
+    open_port_row,
     read_artifact_blob,
     require_target_prefix,
     tile_hosts,
+    unique_services,
 )
 from covey.errors import AdapterError
 
 # Brief log: "http://10.9.8.7 [200 OK]" / "http://127.0.0.1:18080 [200 OK] ..."
 # Leading URL host is the live signal. Plugin/banner IPs are ignored.
 _URL_HOST = re.compile(
-    r"^https?://(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?\b",
+    r"^(https?)://(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?\b",
     re.IGNORECASE,
 )
 
@@ -30,12 +32,28 @@ def parse_whatweb_live_hosts(text: str) -> list[str]:
         match = _URL_HOST.match(line.strip())
         if not match:
             continue
-        ip = match.group(1)
+        ip = match.group(2)
         if ip in seen or is_skipped_ip(ip):
             continue
         seen.add(ip)
         hosts.append(ip)
     return hosts
+
+
+def parse_whatweb_services(text: str) -> list[dict[str, str]]:
+    """HTTP(S) URLs whatweb printed as live. Scheme default ports when omitted."""
+    services: list[dict[str, str]] = []
+    for line in (text or "").splitlines():
+        match = _URL_HOST.match(line.strip())
+        if not match:
+            continue
+        scheme = match.group(1).lower()
+        ip = match.group(2)
+        if is_skipped_ip(ip):
+            continue
+        port = match.group(3) or ("443" if scheme == "https" else "80")
+        services.append(open_port_row(ip, port, service=scheme))
+    return unique_services(services)
 
 
 class WhatwebAdapter(LiveAdapter):
@@ -75,6 +93,9 @@ class WhatwebAdapter(LiveAdapter):
 
     def parse_live_hosts(self, artifact_dir: Path) -> list[str]:
         return parse_whatweb_live_hosts(read_artifact_blob(artifact_dir))
+
+    def parse_services(self, artifact_dir: Path) -> list[dict[str, str]]:
+        return parse_whatweb_services(read_artifact_blob(artifact_dir))
 
 
 def get_adapter() -> WhatwebAdapter:

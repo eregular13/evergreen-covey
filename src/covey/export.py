@@ -153,20 +153,54 @@ def _shard_dirs(run_root: Path, report: dict[str, Any]) -> list[Path]:
     return dirs
 
 
+def _looks_like_nmap_xml(path: Path) -> bool:
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace")[:4096]
+    except OSError:
+        return False
+    return "<nmaprun" in head
+
+
+def _add_hosts(hosts: list[str], seen: set[str], found: list[str]) -> None:
+    for host in found:
+        if host and host not in seen:
+            seen.add(host)
+            hosts.append(host)
+
+
+def _add_services(
+    services: list[dict[str, str]],
+    seen: set[tuple[str, str, str]],
+    found: list[dict[str, str]],
+) -> None:
+    for item in found:
+        key = (item["address"], item["protocol"], item["port"])
+        if key in seen:
+            continue
+        seen.add(key)
+        services.append(item)
+
+
 def _parse_hosts(directory: Path, adapter_name: str) -> list[str]:
+    """Adapter-aware hosts from nmap XML/gnmap, live_hosts.json, or stdout.log."""
+    hosts: list[str] = []
+    seen: set[str] = set()
     xml_path = directory / "scan.xml"
-    if xml_path.is_file():
+    if xml_path.is_file() and (adapter_name == "nmap" or _looks_like_nmap_xml(xml_path)):
         try:
-            return parse_nmap_xml_live_hosts(xml_path)
+            _add_hosts(hosts, seen, parse_nmap_xml_live_hosts(xml_path))
         except Exception:
             pass
     gnmap_path = directory / "scan.gnmap"
-    if gnmap_path.is_file():
-        return parse_gnmap_live_hosts(gnmap_path)
+    if gnmap_path.is_file() and (adapter_name == "nmap" or not hosts):
+        try:
+            _add_hosts(hosts, seen, parse_gnmap_live_hosts(gnmap_path))
+        except Exception:
+            pass
     json_path = directory / "scan.json"
-    if json_path.is_file():
+    if json_path.is_file() and adapter_name in {"masscan", "nmap"}:
         text = json_path.read_text(encoding="utf-8", errors="replace")
-        return parse_masscan_json(text) or unique_ipv4s(text)
+        _add_hosts(hosts, seen, parse_masscan_json(text) or unique_ipv4s(text))
     live_path = directory / "live_hosts.json"
     if live_path.is_file():
         try:
@@ -174,29 +208,19 @@ def _parse_hosts(directory: Path, adapter_name: str) -> list[str]:
         except json.JSONDecodeError:
             loaded = None
         if isinstance(loaded, list):
-            return [str(item) for item in loaded if item]
+            _add_hosts(hosts, seen, [str(item) for item in loaded if item])
     try:
         plugin = adapter_for(adapter_name)
     except Exception:
-        return []
+        return hosts
     try:
-        return list(plugin.parse_live_hosts(directory))
+        _add_hosts(hosts, seen, list(plugin.parse_live_hosts(directory)))
     except Exception:
-        return []
+        pass
+    return hosts
 
 
-def _parse_services(directory: Path) -> list[dict[str, str]]:
-    xml_path = directory / "scan.xml"
-    if xml_path.is_file():
-        try:
-            found = parse_nmap_xml_services(xml_path)
-            if found:
-                return found
-        except Exception:
-            pass
-    gnmap_path = directory / "scan.gnmap"
-    if gnmap_path.is_file():
-        return parse_gnmap_services(gnmap_path)
+def _parse_masscan_json_services(directory: Path) -> list[dict[str, str]]:
     json_path = directory / "scan.json"
     if not json_path.is_file():
         return []
@@ -239,6 +263,38 @@ def _parse_services(directory: Path) -> list[dict[str, str]]:
                     "service": str(port.get("service") or ""),
                 }
             )
+    return services
+
+
+def _parse_services(directory: Path, adapter_name: str) -> list[dict[str, str]]:
+    """Open ports from nmap XML/gnmap, masscan JSON, or adapter stdout.log."""
+    services: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    xml_path = directory / "scan.xml"
+    if xml_path.is_file() and (adapter_name == "nmap" or _looks_like_nmap_xml(xml_path)):
+        try:
+            _add_services(services, seen, parse_nmap_xml_services(xml_path))
+        except Exception:
+            pass
+    gnmap_path = directory / "scan.gnmap"
+    if gnmap_path.is_file() and (adapter_name == "nmap" or not services):
+        try:
+            _add_services(services, seen, parse_gnmap_services(gnmap_path))
+        except Exception:
+            pass
+    if adapter_name in {"masscan", "nmap"}:
+        _add_services(services, seen, _parse_masscan_json_services(directory))
+    try:
+        plugin = adapter_for(adapter_name)
+    except Exception:
+        return services
+    parse = getattr(plugin, "parse_services", None)
+    if not callable(parse):
+        return services
+    try:
+        _add_services(services, seen, list(parse(directory)))
+    except Exception:
+        pass
     return services
 
 
@@ -536,7 +592,7 @@ def export_pack(
             if host not in seen_hosts:
                 seen_hosts.add(host)
                 hosts.append(host)
-        for service in _parse_services(directory):
+        for service in _parse_services(directory, adapter):
             key = (service["address"], service["protocol"], service["port"])
             if key in seen_svc:
                 continue
