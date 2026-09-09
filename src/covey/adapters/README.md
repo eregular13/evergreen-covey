@@ -193,10 +193,23 @@ may `apt-get install ike-scan` onto **this VM only**.
 
 `python -m covey prove --adapter ike-scan`
 
+## svmap (fifteenth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_SVMAP`, or the prove path
+may `apt-get install sipvicious` onto **this VM only**.
+
+- pass1: `-p <SCOPE port> -P 0` OPTIONS sweep of the tile CIDR
+- pass2: OPTIONS against pass1-live hosts
+- prove serves SIP/2.0 200 and sets User-Agent `covey-sip-lab`
+  (SIP probe ≠ UDP echo; UA `unknown` is not live)
+- parse requires an `ip:port` SIP Device table cell with a real
+  User-Agent. sipvicious 0.3.3 has no `-o` and no `--fp`.
+
+`python -m covey prove --adapter svmap`
+
 ## Other live BYO adapters (argv+unit only)
 
-masscan, arp-scan, netdiscover, zmap, unicornscan,
-svmap
+masscan, arp-scan, netdiscover, zmap, unicornscan
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 arp-scan / netdiscover have no L2 on loopback.

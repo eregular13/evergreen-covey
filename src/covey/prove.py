@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, or ike-scan; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, or svmap; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -32,6 +32,7 @@ from covey.runner import (
     ensure_onesixtyone,
     ensure_rustscan,
     ensure_sslscan,
+    ensure_svmap,
     ensure_tlsx,
     ensure_whatweb,
     run_plan,
@@ -52,6 +53,7 @@ ONESIXTYONE_LAB_SCOPE = Path("examples/scope.lab.onesixtyone.yaml")
 NBTSCAN_LAB_SCOPE = Path("examples/scope.lab.nbtscan.yaml")
 BRAA_LAB_SCOPE = Path("examples/scope.lab.braa.yaml")
 IKE_SCAN_LAB_SCOPE = Path("examples/scope.lab.ike-scan.yaml")
+SVMAP_LAB_SCOPE = Path("examples/scope.lab.svmap.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -67,6 +69,7 @@ LAB_SCOPES = {
     "nbtscan": NBTSCAN_LAB_SCOPE,
     "braa": BRAA_LAB_SCOPE,
     "ike-scan": IKE_SCAN_LAB_SCOPE,
+    "svmap": SVMAP_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -91,6 +94,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "nbtscan",
         "braa",
         "ike-scan",
+        "svmap",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -185,8 +189,9 @@ def loopback_lab_listeners(
     handshake). onesixtyone and braa need ``loopback_snmp_lab`` (an
     SNMPv1 GetResponse). nbtscan needs ``loopback_nbstat_lab`` (a
     NetBIOS name table on UDP/137). ike-scan needs ``loopback_ike_lab``
-    (an ISAKMP SA with a nonzero responder cookie). Neither is this
-    bare accept.
+    (an ISAKMP SA with a nonzero responder cookie). svmap needs
+    ``loopback_sip_lab`` (a SIP/2.0 200 with a User-Agent). Neither is
+    this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -752,6 +757,101 @@ def loopback_nbstat_lab(
         _restore_unprivileged_port_start(previous)
 
 
+def _sip_header(text: str, name: str, default: str) -> str:
+    prefix = name.lower() + ":"
+    for raw in text.replace("\r\n", "\n").splitlines():
+        if raw.lower().startswith(prefix):
+            return raw.split(":", 1)[1].strip()
+    return default
+
+
+def _sip_ok_response(request: bytes) -> bytes | None:
+    """Answer OPTIONS/INVITE/REGISTER with SIP/2.0 200 + User-Agent.
+
+    A UDP echo is not enough: svmap ignores its own OPTIONS packet
+    ("found nothing"). A non-SIP datagram can still print SIP Device
+    with User-Agent ``unknown`` — parse rejects that. The lab must
+    speak SIP and set a User-Agent.
+    """
+    if not request:
+        return None
+    text = request.decode("utf-8", "replace")
+    first = text.replace("\r\n", "\n").split("\n", 1)[0]
+    if not first.startswith(("OPTIONS ", "INVITE ", "REGISTER ")):
+        return None
+    via = _sip_header(text, "Via", "SIP/2.0/UDP 127.0.0.1")
+    frm = _sip_header(text, "From", '"sipvicious"<sip:100@1.1.1.1>')
+    to = _sip_header(text, "To", frm)
+    cid = _sip_header(text, "Call-ID", "covey-sip-lab")
+    cseq = _sip_header(text, "CSeq", "1 OPTIONS")
+    body = (
+        "SIP/2.0 200 OK\r\n"
+        f"Via: {via}\r\n"
+        f"From: {frm}\r\n"
+        f"To: {to};tag=coveylab\r\n"
+        f"Call-ID: {cid}\r\n"
+        f"CSeq: {cseq}\r\n"
+        "User-Agent: covey-sip-lab\r\n"
+        "Content-Length: 0\r\n"
+        "\r\n"
+    )
+    return body.encode("utf-8")
+
+
+@contextmanager
+def loopback_sip_lab(
+    hosts: tuple[str, ...] = RUSTSCAN_LAB_BIND,
+    port: int = RUSTSCAN_LAB_PORT,
+) -> Iterator[tuple[str, int]]:
+    """Serve SIP/2.0 200 on loopback tiles so svmap can observe a device.
+
+    A UDP echo is not enough: svmap ignores its own OPTIONS packet.
+    This lab replies with ``SIP/2.0 200 OK`` and User-Agent
+    ``covey-sip-lab``. That is lab fixture, not a forged scanner result.
+    """
+    sockets: list[socket.socket] = []
+    stop = threading.Event()
+
+    def serve(sock: socket.socket) -> None:
+        while not stop.is_set():
+            try:
+                data, addr = sock.recvfrom(4096)
+            except TimeoutError:
+                continue
+            except OSError:
+                break
+            reply = _sip_ok_response(data)
+            if not reply:
+                continue
+            try:
+                sock.sendto(reply, addr)
+            except OSError:
+                break
+
+    try:
+        for host in hosts:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind((host, port))
+            except OSError as exc:
+                sock.close()
+                raise RunnerError(
+                    f"SIP lab cannot bind UDP {host}:{port}: {exc}"
+                ) from exc
+            sock.settimeout(0.25)
+            sockets.append(sock)
+            threading.Thread(target=serve, args=(sock,), daemon=True).start()
+        yield hosts[0], port
+    finally:
+        stop.set()
+        for sock in sockets:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+
 def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
     name = adapter.name
     if name == "nmap":
@@ -782,6 +882,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_braa(install_if_missing=install_if_missing)
     if name == "ike-scan":
         return ensure_ike_scan(install_if_missing=install_if_missing)
+    if name == "svmap":
+        return ensure_svmap(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -845,6 +947,9 @@ def run_prove(
             report = _execute()
     elif plugin.name == "ike-scan":
         with loopback_ike_lab(port=_lab_port(scope)):
+            report = _execute()
+    elif plugin.name == "svmap":
+        with loopback_sip_lab(port=_lab_port(scope)):
             report = _execute()
     elif plugin.name == "nbtscan":
         with loopback_nbstat_lab():

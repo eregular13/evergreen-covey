@@ -815,6 +815,39 @@ def ensure_ike_scan(*, install_if_missing: bool = False) -> ExecSpec:
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="ike-scan")
 
 
+def ensure_svmap(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO svmap. Optionally apt-install sipvicious on this VM only."""
+    try:
+        return resolve_exec("svmap")
+    except RunnerError:
+        if not install_if_missing:
+            raise
+    if shutil.which("apt-get") is None:
+        raise RunnerError("cannot prove-install svmap: apt-get not available")
+    update = subprocess.run(
+        ["sudo", "apt-get", "update"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if update.returncode != 0:
+        raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+    install = subprocess.run(
+        ["sudo", "apt-get", "install", "-y", "sipvicious"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if install.returncode != 0:
+        raise RunnerError(
+            f"apt-get install sipvicious failed: {install.stderr[-400:]}"
+        )
+    found = _which_tool("svmap")
+    if not found:
+        raise RunnerError("sipvicious installed but svmap is still not on PATH")
+    return ExecSpec(kind="local", binary=found, display=found, entrypoint="svmap")
+
+
 def _hping3_path() -> str | None:
     found = shutil.which("hping3")
     if found:

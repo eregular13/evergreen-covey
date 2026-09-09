@@ -16,7 +16,12 @@ from covey.adapters.registry import (
 from covey.cli import main
 from covey.errors import RunnerError
 from covey.export import export_pack
-from covey.prove import IKE_RESPONDER_COOKIE, _ike_handshake_response, run_prove
+from covey.prove import (
+    IKE_RESPONDER_COOKIE,
+    _ike_handshake_response,
+    _sip_ok_response,
+    run_prove,
+)
 from covey.runner import resolve_exec, resolve_nmap
 from covey.scope import load
 
@@ -209,7 +214,40 @@ def test_ike_lab_sets_nonzero_responder_cookie():
     assert _ike_handshake_response(b"short") is None
 
 
-def test_e2e_proven_adapters_are_nmap_through_ike_scan():
+def test_committed_svmap_lab_scope_is_signed_and_tiny():
+    scope = load(Path("examples/scope.lab.svmap.yaml"))
+    assert scope.demo is True
+    assert scope.adapter == "svmap"
+    assert scope.max_workers <= 4
+    cidrs = [t.listed for t in scope.targets]
+    assert cidrs == ["127.0.0.0/28"]
+    assert all(not c.endswith("/8") for c in cidrs)
+    assert "0.0.0.0/0" not in cidrs
+    assert scope.deepen.ports == "18080"
+
+
+def test_sip_lab_replies_200_with_user_agent():
+    request = (
+        b"OPTIONS sip:100@127.0.0.1 SIP/2.0\r\n"
+        b"Via: SIP/2.0/UDP 127.0.0.1:18081;branch=z9hG4bK\r\n"
+        b'From: "sipvicious"<sip:100@1.1.1.1>;tag=abc\r\n'
+        b"To: \"sipvicious\"<sip:100@1.1.1.1>\r\n"
+        b"Call-ID: lab\r\n"
+        b"CSeq: 1 OPTIONS\r\n"
+        b"Content-Length: 0\r\n"
+        b"\r\n"
+    )
+    reply = _sip_ok_response(request)
+    assert reply is not None
+    text = reply.decode("utf-8")
+    assert text.startswith("SIP/2.0 200 OK")
+    assert "User-Agent: covey-sip-lab" in text
+    assert not reply.startswith(b"OPTIONS ")
+    assert _sip_ok_response(b"not-sip") is None
+    assert _sip_ok_response(request) != request
+
+
+def test_e2e_proven_adapters_are_nmap_through_svmap():
     assert E2E_PROVEN_ADAPTERS == (
         "nmap",
         "rustscan",
@@ -225,8 +263,9 @@ def test_e2e_proven_adapters_are_nmap_through_ike_scan():
         "nbtscan",
         "braa",
         "ike-scan",
+        "svmap",
     )
-    assert len(UNPROVEN_ADAPTERS) == 6
+    assert len(UNPROVEN_ADAPTERS) == 5
     assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
     assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
     assert UNPROVEN_ADAPTERS == tuple(
@@ -318,8 +357,9 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert re.search(r"^\| 12 \| `nbtscan`", prove, re.MULTILINE)
     assert re.search(r"^\| 13 \| `braa`", prove, re.MULTILINE)
     assert re.search(r"^\| 14 \| `ike-scan`", prove, re.MULTILINE)
-    fifteenth = re.search(r"^\| 15 \|", prove, re.MULTILINE)
-    assert fifteenth is None, "PROVE.md must not add a fifteenth live e2e row"
+    assert re.search(r"^\| 15 \| `svmap`", prove, re.MULTILINE)
+    sixteenth = re.search(r"^\| 16 \|", prove, re.MULTILINE)
+    assert sixteenth is None, "PROVE.md must not add a sixteenth live e2e row"
 
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "prove-rustscan" in makefile
@@ -335,6 +375,7 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert "prove-nbtscan" in makefile
     assert "prove-braa" in makefile
     assert "prove-ike-scan" in makefile
+    assert "prove-svmap" in makefile
     for unproven in UNPROVEN_ADAPTERS:
         assert f"prove-{unproven}" not in makefile, (
             f"Makefile must not grow a live prove target for {unproven}"
@@ -750,3 +791,36 @@ def test_prove_invokes_byo_ike_scan(tmp_path: Path):
         assert "ike-scan" in argv.lower()
         assert "18080" in argv
         assert "--sport=0" in argv
+
+
+@pytest.mark.integration
+def test_prove_invokes_byo_svmap(tmp_path: Path):
+    try:
+        resolve_exec("svmap")
+    except Exception:
+        pytest.skip("BYO svmap not available")
+    summary = run_prove(
+        out_root=tmp_path, adapter="svmap", install_if_missing=False
+    )
+    assert summary["ok"] is True
+    assert summary["adapter"] == "svmap"
+    assert len(summary["shards"]) >= 2
+    assert summary["pass1_workers"] >= 2
+    assert summary["pass2_ran"] >= 1
+    assert summary["live_hosts"]
+    assert all(h.startswith("127.0.0.") for h in summary["live_hosts"])
+    argv_files = list(tmp_path.glob("shards/p1-*/argv.json"))
+    assert len(argv_files) >= 2
+    stdout_files = list(tmp_path.glob("shards/p1-*/stdout.log"))
+    assert len(stdout_files) >= 2
+    greppable = "\n".join(p.read_text(encoding="utf-8") for p in stdout_files)
+    assert "SIP Device" in greppable
+    assert "covey-sip-lab" in greppable
+    assert "127.0.0." in greppable
+    for path in argv_files:
+        argv = path.read_text(encoding="utf-8")
+        assert "svmap" in argv.lower()
+        assert "18080" in argv
+        assert "-P" in argv
+        assert "--fp" not in argv
+        assert "-o" not in argv

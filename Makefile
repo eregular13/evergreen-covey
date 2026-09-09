@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan prove-svmap test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -106,6 +106,12 @@ prove-braa: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-ike-scan: venv
 	$(PY) -m covey prove --adapter ike-scan --out out/ike-scan
+
+# Fifteenth e2e-proven adapter. BYO svmap / sipvicious (apt on this VM only).
+# Needs a SIP/2.0 200 lab with a User-Agent, not a UDP echo.
+# Does not replace `make prove` (nmap stays the default).
+prove-svmap: venv
+	$(PY) -m covey prove --adapter svmap --out out/svmap
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info
