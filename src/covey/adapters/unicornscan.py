@@ -72,6 +72,10 @@ class UnicornscanAdapter(LiveAdapter):
     source IP that is not in the tile. A same-IP self-scan on lo finds 0.
     That is lab-enabling argv, not a forged result — unicornscan itself
     must still print ``TCP open``.
+
+    Two unicornscan processes on the same UID collide on
+    ``/tmp/unicornscan-<uid>/{send,listen}``. The lab SCOPE uses
+    ``max_workers: 1`` so tiles run sequentially.
     """
 
     name = "unicornscan"

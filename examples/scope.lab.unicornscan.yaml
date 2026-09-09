@@ -4,7 +4,9 @@
 # TCP listener on 18080 on the first usable host of each /30. Default
 # iface is the gateway NIC — loopback tiles need -i lo. A same-IP
 # self-scan on lo finds 0; argv sources 127.0.0.254 (still 127/8, not
-# in the /28). Parse requires TCP open (not TCP closed).
+# in the /28). Two unicornscan processes on the same UID collide on
+# /tmp/unicornscan-<uid>/{send,listen}, so max_workers is 1 (four
+# sequential tiles). Parse requires TCP open (not TCP closed).
 # Signature is HMAC-SHA256 with the demo key (demo: true).
 version: 1
 demo: true
@@ -16,7 +18,7 @@ window:
   start: '2026-01-01T00:00:00Z'
   end: '2029-12-31T23:59:59Z'
 adapter: unicornscan
-max_workers: 2
+max_workers: 1
 max_shards: 16
 allow_wide: false
 tile:
@@ -26,4 +28,4 @@ pass2:
   ports: '18080'
 targets:
 - cidr: 127.0.0.0/28
-signature: c1b6aad42f096e640add0e85977be733cd004ffa0bdfede415c54362bd5869b6
+signature: 48ddbb1cf798da48ec723dc910121a1a94d89c2c48feab76217ecb6ce5cdf6c1

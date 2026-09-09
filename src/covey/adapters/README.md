@@ -218,6 +218,8 @@ path may install a GitHub release `.deb` onto **this VM only**.
 - parse requires `TCP open`; `TCP closed` IPs are ignored
 - Ubuntu noble has no apt unicornscan. Package `modules.conf` is
   `0640`; prove may `chmod 644` on this VM only.
+- same-UID processes collide on `/tmp/unicornscan-<uid>`; lab
+  `max_workers: 1`
 
 `python -m covey prove --adapter unicornscan`
 

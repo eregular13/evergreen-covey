@@ -99,7 +99,10 @@ iface is eth0 — a 127/8 tile without `-i lo` finds 0. Parse
 requires `TCP open`; `TCP closed` names the IP but is not a live
 host. Ubuntu noble has no apt unicornscan; prove may install a
 GitHub release `.deb` on this VM only. Package `modules.conf` is
-`0640`; prove may `chmod 644` on this VM only. arp-scan was
+`0640`; prove may `chmod 644` on this VM only. Two unicornscan
+processes on the same UID collide on
+`/tmp/unicornscan-<uid>/{send,listen}`; the lab SCOPE uses
+`max_workers: 1`. arp-scan was
 preferred earlier: `arp-scan -I lo` fails with `Could not obtain MAC address
 for interface lo` (loopback is `ARPHRD_LOOPBACK`, no L2). That is
 not a live prove. Covey does not invent a TAP/veth brick.
@@ -109,8 +112,10 @@ prove. zmap stays argv+unit for the same loopback-SYN reason.
 
 ## Lab SCOPE
 
-All sixteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
-`max_workers: 2`. Not a `/8`. Not `0.0.0.0/0`.
+All sixteen proven paths tile loopback `127.0.0.0/28` into four `/30`s.
+Fifteen use `max_workers: 2`. unicornscan uses `max_workers: 1` because
+two processes on the same UID collide on
+`/tmp/unicornscan-<uid>/{send,listen}`. Not a `/8`. Not `0.0.0.0/0`.
 
 | adapter | SCOPE | pass1 | pass2 |
 | --- | --- | --- | --- |
@@ -129,7 +134,7 @@ All sixteen proven paths tile loopback `127.0.0.0/28` into four `/30`s with
 | braa | `examples/scope.lab.braa.yaml` | `braa public@host:18080:sysDescr` per usable tile host | sysDescr + sysName on pass1-live hosts |
 | ike-scan | `examples/scope.lab.ike-scan.yaml` | `ike-scan --sport=0 --dport=18080` tile CIDR (Main Mode) | `--aggressive --id=vpn` on pass1-live hosts |
 | svmap | `examples/scope.lab.svmap.yaml` | `svmap -p 18080 -P 0` tile CIDR (OPTIONS) | OPTIONS on pass1-live hosts |
-| unicornscan | `examples/scope.lab.unicornscan.yaml` | `unicornscan -mT -i lo -s 127.0.0.254 <tile>:18080` | unicornscan-only on pass1-live hosts |
+| unicornscan | `examples/scope.lab.unicornscan.yaml` | `unicornscan -mT -i lo -s 127.0.0.254 <tile>:18080` (`max_workers: 1`) | unicornscan-only on pass1-live hosts |
 
 rustscan, naabu, nping `--tcp-connect`, and unicornscan are **TCP probes**. Unlike
 nmap `-sn` or fping ICMP, an empty loopback tile has no live hosts
@@ -236,9 +241,11 @@ itself must still send SYN and print `TCP open`. `TCP closed`
 names the IP but is not a live host. Default iface is the
 gateway NIC; loopback tiles add `-i lo`. A same-IP self-scan on
 lo finds 0, so argv sources `127.0.0.254` (still 127/8, not in
-the lab `/28`). Pass1 uses SCOPE `pass2.ports` (lab default
-`18080`). zmap was preferred first and stays argv+unit — see
-the hold above.
+the lab `/28`). Two processes on the same UID collide on
+`/tmp/unicornscan-<uid>/{send,listen}`, so the lab SCOPE uses
+`max_workers: 1` (four sequential tiles; still ≥2 shards).
+Pass1 uses SCOPE `pass2.ports` (lab default `18080`). zmap was
+preferred first and stays argv+unit — see the hold above.
 
 ## BYO binaries
 

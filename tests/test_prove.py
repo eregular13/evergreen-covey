@@ -833,7 +833,7 @@ def test_committed_unicornscan_lab_scope_is_signed_and_tiny():
     scope = load(Path("examples/scope.lab.unicornscan.yaml"))
     assert scope.demo is True
     assert scope.adapter == "unicornscan"
-    assert scope.max_workers <= 4
+    assert scope.max_workers == 1
     cidrs = [t.listed for t in scope.targets]
     assert cidrs == ["127.0.0.0/28"]
     assert all(not c.endswith("/8") for c in cidrs)

@@ -138,8 +138,10 @@ forbidden.
   live host. Pass1 uses SCOPE `pass2.ports` (lab default
   `18080`). Ubuntu noble has no apt unicornscan; prove may
   install a GitHub release `.deb` on this VM only. Package
-  `modules.conf` is `0640`; prove may `chmod 644` on this VM
-  only.
+  `modules.conf` is   `0640`; prove may `chmod 644` on this VM
+  only. Two processes on the same UID collide on
+  `/tmp/unicornscan-<uid>/{send,listen}`; the lab SCOPE uses
+  `max_workers: 1` so tiles run sequentially.
 - **arp-scan** / **netdiscover**: L2 ARP. Loopback is
   `ARPHRD_LOOPBACK` (no MAC). `arp-scan -I lo` fails closed with
   `Could not obtain MAC address for interface lo`. `netdiscover -i lo`
