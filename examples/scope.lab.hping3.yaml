@@ -1,0 +1,26 @@
+# Evergreen Covey — signed demo SCOPE for the hping3 loopback prove.
+# Same honesty as examples/scope.lab.yaml: tiles 127.0.0.0/28 into /30s.
+# Not a real /8. hping3 is ICMP host discovery (like fping / nmap -sn),
+# so loopback answers without a TCP lab listener. pass1 pings the first
+# usable host of each /30. The HPING banner is not a live host — prove
+# requires ip= reply lines.
+# Signature is HMAC-SHA256 with the demo key (demo: true).
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: prove-lab
+  purpose: evergreen-covey hping3 loopback prove
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: hping3
+max_workers: 2
+max_shards: 16
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 30
+targets:
+- cidr: 127.0.0.0/28
+signature: f52d43ffa3d0ad89d11ff926d4e20ac8b82b1c3efff4a4a9f7026dfaccde0238

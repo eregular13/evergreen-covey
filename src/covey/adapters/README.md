@@ -129,10 +129,22 @@ BYO only. Resolve from `PATH` / `COVEY_WHATWEB`, or the prove path may
 
 `python -m covey prove --adapter whatweb`
 
+## hping3 (tenth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_HPING3`, or the prove path may
+`apt-get install hping3` and `setcap` onto **this VM only**.
+
+- pass1: `--icmp` against the first usable tile host
+- pass2: `--syn` against the first pass1-live host
+- ICMP host discovery; loopback answers; no TCP lab listener
+- raw sockets need `CAP_NET_RAW` / root; parse requires `ip=` reply lines
+
+`python -m covey prove --adapter hping3`
+
 ## Other live BYO adapters (argv+unit only)
 
 masscan, arp-scan, netdiscover, zmap, unicornscan,
-hping3, ike-scan, nbtscan, onesixtyone, braa, svmap
+ike-scan, nbtscan, onesixtyone, braa, svmap
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 

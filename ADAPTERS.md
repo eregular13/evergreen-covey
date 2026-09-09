@@ -6,14 +6,16 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 **E2E-proven live (real BYO binary + signed loopback lab): `nmap` (first),
 `rustscan` (second), `fping` (third), `naabu` (fourth), `nping`
 (fifth), `httpx` (sixth), `sslscan` (seventh), `tlsx` (eighth),
-`whatweb` (ninth).** The other 11 ids are argv+unit only. Source of
+`whatweb` (ninth), `hping3` (tenth).** The other 10 ids are argv+unit
+only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
 [PROVE.md](PROVE.md). Do not claim them live.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
-(GitHub release / go), sslscan (apt), tlsx (GitHub release / go), or
-whatweb (apt) **on that machine only** — never into git.
+(GitHub release / go), sslscan (apt), tlsx (GitHub release / go),
+whatweb (apt), or hping3 (apt + `setcap` for raw sockets) **on that
+machine only** — never into git.
 
 SCOPE selects the tool with `adapter: <id>`. Unknown ids are refused.
 OpenVAS / Greenbone / GVM are **file_drop only** (no live argv). Nuclei,
@@ -32,7 +34,7 @@ forbidden.
 | `zmap` | `zmap` | `-p 80` on the tile (`-B /dev/null` so RFC1918 labs work) | `-p 443` on `host/32` list | one IPv4 per line | `COVEY_ZMAP` |
 | `unicornscan` | `unicornscan` | `-mT <cidr>:80,443` | `-mT host:22,80,443,3389` | `TCP open a.b.c.d:port` | `COVEY_UNICORNSCAN` |
 | `nping` | `nping` | `--tcp-connect -p <SCOPE ports>` tile hosts (**5th e2e-proven**) | `--tcp-connect` live hosts | `Handshake with ip:port completed` (not refused `RCVD`) | `COVEY_NPING` |
-| `hping3` | `hping3` | `--icmp` to **tile broadcast** (single dest) | `--syn -p 80` first live host | `ip=a.b.c.d` reply lines | `COVEY_HPING3` |
+| `hping3` | `hping3` | `--icmp` first usable tile host (**10th e2e-proven**) | `--syn -p <SCOPE port or 80>` first live host | `ip=` reply lines (not HPING banner) | `COVEY_HPING3` |
 | `ike-scan` | `ike-scan` | IKE Main Mode on the CIDR | `--aggressive --id=vpn` hosts | handshake IPv4 | `COVEY_IKE_SCAN` |
 | `nbtscan` | `nbtscan` | `-s :` NetBIOS on the CIDR | `-v` on live hosts | leading IPv4 / name table | `COVEY_NBTSCAN` |
 | `onesixtyone` | `onesixtyone` | SNMP `public/private` over tile hosts file | extra communities on live hosts | `ip [community] …` | `COVEY_ONESIXTYONE` |
@@ -45,9 +47,18 @@ forbidden.
 
 ## Limits (honest)
 
-- **hping3** / **ping**: one destination per process. pass1 uses the tile
-  broadcast (`ping -b`) so replies can name hosts; pass2 deepens the first
-  live host.
+- **hping3**: one destination per process. pass1 is ICMP to the first
+  usable host of the already-tiled CIDR. Tenth e2e-proven adapter
+  (`python -m covey prove --adapter hping3` / `make prove-hping3`).
+  Loopback answers; no TCP lab listener. Raw `--icmp` / `--syn` need
+  `CAP_NET_RAW` (or root); prove may apt-install and `setcap` on this
+  VM only. Parse requires `ip=` reply lines; the HPING banner names
+  the destination even on 100% loss and is not a live host. pass2
+  SYN-deepens the first live host (SCOPE `pass2.ports` first port,
+  else `80`).
+- **ping**: one destination per process. pass1 uses the tile broadcast
+  (`ping -b`) so replies can name hosts; pass2 deepens the first live
+  host.
 - **sslscan**: one target per process. pass1 is the first usable host of the
   already-tiled CIDR (Covey tiles; a `/30` is two hosts) as
   `host:<SCOPE port>` (default `443`). Seventh e2e-proven adapter

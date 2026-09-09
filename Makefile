@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 test unit venv export clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -76,6 +76,12 @@ prove-tlsx: venv
 # Does not replace `make prove` (nmap stays the default).
 prove-whatweb: venv
 	$(PY) -m covey prove --adapter whatweb --out out/whatweb
+
+# Tenth e2e-proven adapter. BYO hping3 (apt + setcap on this VM only).
+# ICMP on loopback; no TCP lab listener. Raw sockets need CAP_NET_RAW.
+# Does not replace `make prove` (nmap stays the default).
+prove-hping3: venv
+	$(PY) -m covey prove --adapter hping3 --out out/hping3
 
 clean:
 	rm -rf out .pytest_cache src/*.egg-info *.egg-info

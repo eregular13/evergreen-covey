@@ -684,6 +684,127 @@ def ensure_whatweb(*, install_if_missing: bool = False) -> ExecSpec:
     return ExecSpec(kind="local", binary=found, display=found, entrypoint="whatweb")
 
 
+def _hping3_path() -> str | None:
+    found = shutil.which("hping3")
+    if found:
+        return found
+    fallback = Path("/usr/sbin/hping3")
+    if fallback.is_file() and os.access(fallback, os.X_OK):
+        return str(fallback)
+    return None
+
+
+def _hping3_opens_raw(binary: str) -> bool:
+    """True when hping3 can send ICMP and print an ip= reply on loopback."""
+    try:
+        completed = subprocess.run(
+            [binary, "--icmp", "-c", "1", "-i", "u20000", "127.0.0.1"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    blob = f"{completed.stdout or ''}\n{completed.stderr or ''}"
+    if "can't open raw socket" in blob or "Operation not permitted" in blob:
+        return False
+    return "ip=" in blob
+
+
+def _grant_hping3_raw_caps(binary: str) -> None:
+    """Grant CAP_NET_RAW on this VM only. Never vendors the binary."""
+    setcap = shutil.which("setcap") or "/usr/sbin/setcap"
+    if not Path(setcap).is_file():
+        if shutil.which("apt-get") is None:
+            raise RunnerError("cannot grant hping3 raw caps: setcap not available")
+        install = subprocess.run(
+            ["sudo", "apt-get", "install", "-y", "libcap2-bin"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if install.returncode != 0:
+            raise RunnerError(
+                f"apt-get install libcap2-bin failed: {install.stderr[-400:]}"
+            )
+        setcap = shutil.which("setcap") or "/usr/sbin/setcap"
+    if not Path(setcap).is_file():
+        raise RunnerError("setcap missing; cannot grant hping3 raw caps")
+    granted = subprocess.run(
+        ["sudo", setcap, "cap_net_raw,cap_net_admin+ep", binary],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if granted.returncode != 0:
+        raise RunnerError(
+            "setcap hping3 failed: " + (granted.stderr or granted.stdout)[-400:]
+        )
+
+
+def ensure_hping3(*, install_if_missing: bool = False) -> ExecSpec:
+    """Resolve BYO hping3. Optionally apt-install + setcap on this VM only."""
+    try:
+        spec = resolve_exec("hping3")
+    except RunnerError:
+        path = _hping3_path()
+        if path:
+            spec = ExecSpec(
+                kind="local",
+                binary=path,
+                display=path,
+                entrypoint="hping3",
+            )
+        elif not install_if_missing:
+            raise
+        else:
+            if shutil.which("apt-get") is None:
+                raise RunnerError("cannot prove-install hping3: apt-get not available")
+            update = subprocess.run(
+                ["sudo", "apt-get", "update"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if update.returncode != 0:
+                raise RunnerError(f"apt-get update failed: {update.stderr[-400:]}")
+            install = subprocess.run(
+                ["sudo", "apt-get", "install", "-y", "hping3"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            if install.returncode != 0:
+                raise RunnerError(
+                    f"apt-get install hping3 failed: {install.stderr[-400:]}"
+                )
+            found = _hping3_path()
+            if not found:
+                raise RunnerError("hping3 installed but still not on PATH")
+            spec = ExecSpec(
+                kind="local",
+                binary=found,
+                display=found,
+                entrypoint="hping3",
+            )
+
+    if spec.kind != "local":
+        return spec
+    if _hping3_opens_raw(spec.binary):
+        return spec
+    if not install_if_missing:
+        raise RunnerError(
+            "hping3 is present but cannot open a raw socket "
+            "(needs CAP_NET_RAW / root). Re-run without --no-install "
+            "so prove can setcap on this VM only, or set COVEY_HPING3"
+        )
+    _grant_hping3_raw_caps(spec.binary)
+    if not _hping3_opens_raw(spec.binary):
+        raise RunnerError("hping3 still cannot open a raw socket after setcap")
+    return spec
+
+
 def _install_tlsx_release() -> Path:
     """Download the official tlsx release onto this VM. Never into git."""
     machine = platform.machine().lower()

@@ -16,9 +16,10 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **sslscan** is the seventh (`python -m covey prove --adapter sslscan`).
 **tlsx** is the eighth (`python -m covey prove --adapter tlsx`).
 **whatweb** is the ninth (`python -m covey prove --adapter whatweb`).
-The other 11 remain argv+unit only — do not claim them live. Source of
+**hping3** is the tenth (`python -m covey prove --adapter hping3`).
+The other 10 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
-`nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`) in
+`nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`) in
 `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
@@ -79,7 +80,9 @@ addresses — HTTP 200 is not enough. tlsx uses
 and the same TLS lab — HTTP 200 is not enough. whatweb uses
 `examples/scope.lab.whatweb.yaml` (`adapter: whatweb`, SCOPE ports
 `18080`) and the same HTTP/1.1 200 lab httpx uses — bare TCP accept
-is not enough. See [PROVE.md](PROVE.md).
+is not enough. hping3 uses `examples/scope.lab.hping3.yaml`
+(`adapter: hping3`) and ICMP on loopback — no listener. Raw sockets
+need `CAP_NET_RAW` (or root). See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
@@ -172,6 +175,7 @@ python -m covey prove --adapter httpx
 python -m covey prove --adapter sslscan
 python -m covey prove --adapter tlsx
 python -m covey prove --adapter whatweb
+python -m covey prove --adapter hping3
 python -m covey export --out out
 # or
 make export
