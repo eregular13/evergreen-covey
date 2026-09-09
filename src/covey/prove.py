@@ -1,4 +1,4 @@
-"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, or svmap; sharded loopback; multi-pass artifacts."""
+"""End-to-end prove: BYO nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, svmap, or unicornscan; sharded loopback; multi-pass artifacts."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from covey.runner import (
     ensure_sslscan,
     ensure_svmap,
     ensure_tlsx,
+    ensure_unicornscan,
     ensure_whatweb,
     run_plan,
 )
@@ -54,6 +55,7 @@ NBTSCAN_LAB_SCOPE = Path("examples/scope.lab.nbtscan.yaml")
 BRAA_LAB_SCOPE = Path("examples/scope.lab.braa.yaml")
 IKE_SCAN_LAB_SCOPE = Path("examples/scope.lab.ike-scan.yaml")
 SVMAP_LAB_SCOPE = Path("examples/scope.lab.svmap.yaml")
+UNICORNSCAN_LAB_SCOPE = Path("examples/scope.lab.unicornscan.yaml")
 LAB_SCOPES = {
     "nmap": LAB_SCOPE,
     "rustscan": RUSTSCAN_LAB_SCOPE,
@@ -70,6 +72,7 @@ LAB_SCOPES = {
     "braa": BRAA_LAB_SCOPE,
     "ike-scan": IKE_SCAN_LAB_SCOPE,
     "svmap": SVMAP_LAB_SCOPE,
+    "unicornscan": UNICORNSCAN_LAB_SCOPE,
 }
 
 # First usable host of each /30 tile of 127.0.0.0/28.
@@ -95,6 +98,7 @@ def _artifact_ok(directory: Path, adapter_name: str) -> bool:
         "braa",
         "ike-scan",
         "svmap",
+        "unicornscan",
     }:
         argv_path = directory / "argv.json"
         stdout_path = directory / "stdout.log"
@@ -190,8 +194,9 @@ def loopback_lab_listeners(
     SNMPv1 GetResponse). nbtscan needs ``loopback_nbstat_lab`` (a
     NetBIOS name table on UDP/137). ike-scan needs ``loopback_ike_lab``
     (an ISAKMP SA with a nonzero responder cookie). svmap needs
-    ``loopback_sip_lab`` (a SIP/2.0 200 with a User-Agent). Neither is
-    this bare accept.
+    ``loopback_sip_lab`` (a SIP/2.0 200 with a User-Agent). unicornscan
+    is a TCP SYN sweeper and uses this bare accept — like rustscan /
+    naabu / nping. Neither HTTP nor TLS is this bare accept.
     """
     sockets: list[socket.socket] = []
     stop = threading.Event()
@@ -884,6 +889,8 @@ def _ensure_binary(adapter: Adapter, *, install_if_missing: bool):
         return ensure_ike_scan(install_if_missing=install_if_missing)
     if name == "svmap":
         return ensure_svmap(install_if_missing=install_if_missing)
+    if name == "unicornscan":
+        return ensure_unicornscan(install_if_missing=install_if_missing)
     raise RunnerError(
         f"prove is e2e-live only for {', '.join(E2E_PROVEN_ADAPTERS)}; "
         f"{name} remains argv+unit only"
@@ -954,7 +961,7 @@ def run_prove(
     elif plugin.name == "nbtscan":
         with loopback_nbstat_lab():
             report = _execute()
-    elif plugin.name in {"rustscan", "naabu", "nping"}:
+    elif plugin.name in {"rustscan", "naabu", "nping", "unicornscan"}:
         with loopback_lab_listeners(port=_lab_port(scope)):
             report = _execute()
     else:

@@ -207,12 +207,27 @@ may `apt-get install sipvicious` onto **this VM only**.
 
 `python -m covey prove --adapter svmap`
 
+## unicornscan (sixteenth e2e-proven)
+
+BYO only. Resolve from `PATH` / `COVEY_UNICORNSCAN`, or the prove
+path may install a GitHub release `.deb` onto **this VM only**.
+
+- pass1: `-mT <tile>:<SCOPE ports>`; loopback adds `-i lo -s 127.0.0.254`
+- pass2: unicornscan-only against pass1-live hosts
+- prove binds a loopback lab listener (TCP SYN ≠ ping sweep)
+- parse requires `TCP open`; `TCP closed` IPs are ignored
+- Ubuntu noble has no apt unicornscan. Package `modules.conf` is
+  `0640`; prove may `chmod 644` on this VM only.
+
+`python -m covey prove --adapter unicornscan`
+
 ## Other live BYO adapters (argv+unit only)
 
-masscan, arp-scan, netdiscover, zmap, unicornscan
+masscan, arp-scan, netdiscover, zmap
 — same shard/stage kit, same fail-closed SCOPE,
 **not** e2e-proven. See `ADAPTERS.md` / `PROVE.md`.
 arp-scan / netdiscover have no L2 on loopback.
+zmap cannot observe loopback SYN replies.
 
 The runner is tool-generic: `COVEY_<TOOL>`, `COVEY_BIN`, or `docker://`
 with a configurable entrypoint.

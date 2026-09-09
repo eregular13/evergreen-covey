@@ -247,7 +247,7 @@ def test_sip_lab_replies_200_with_user_agent():
     assert _sip_ok_response(request) != request
 
 
-def test_e2e_proven_adapters_are_nmap_through_svmap():
+def test_e2e_proven_adapters_are_nmap_through_unicornscan():
     assert E2E_PROVEN_ADAPTERS == (
         "nmap",
         "rustscan",
@@ -264,8 +264,9 @@ def test_e2e_proven_adapters_are_nmap_through_svmap():
         "braa",
         "ike-scan",
         "svmap",
+        "unicornscan",
     )
-    assert len(UNPROVEN_ADAPTERS) == 5
+    assert len(UNPROVEN_ADAPTERS) == 4
     assert set(E2E_PROVEN_ADAPTERS).isdisjoint(UNPROVEN_ADAPTERS)
     assert set(E2E_PROVEN_ADAPTERS) | set(UNPROVEN_ADAPTERS) == set(LIVE_ADAPTER_IDS)
     assert UNPROVEN_ADAPTERS == tuple(
@@ -358,8 +359,9 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert re.search(r"^\| 13 \| `braa`", prove, re.MULTILINE)
     assert re.search(r"^\| 14 \| `ike-scan`", prove, re.MULTILINE)
     assert re.search(r"^\| 15 \| `svmap`", prove, re.MULTILINE)
-    sixteenth = re.search(r"^\| 16 \|", prove, re.MULTILINE)
-    assert sixteenth is None, "PROVE.md must not add a sixteenth live e2e row"
+    assert re.search(r"^\| 16 \| `unicornscan`", prove, re.MULTILINE)
+    seventeenth = re.search(r"^\| 17 \|", prove, re.MULTILINE)
+    assert seventeenth is None, "PROVE.md must not add a seventeenth live e2e row"
 
     makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
     assert "prove-rustscan" in makefile
@@ -376,6 +378,7 @@ def test_honesty_docs_follow_e2e_proven_source_of_truth():
     assert "prove-braa" in makefile
     assert "prove-ike-scan" in makefile
     assert "prove-svmap" in makefile
+    assert "prove-unicornscan" in makefile
     for unproven in UNPROVEN_ADAPTERS:
         assert f"prove-{unproven}" not in makefile, (
             f"Makefile must not grow a live prove target for {unproven}"
@@ -824,3 +827,48 @@ def test_prove_invokes_byo_svmap(tmp_path: Path):
         assert "-P" in argv
         assert "--fp" not in argv
         assert "-o" not in argv
+
+
+def test_committed_unicornscan_lab_scope_is_signed_and_tiny():
+    scope = load(Path("examples/scope.lab.unicornscan.yaml"))
+    assert scope.demo is True
+    assert scope.adapter == "unicornscan"
+    assert scope.max_workers <= 4
+    cidrs = [t.listed for t in scope.targets]
+    assert cidrs == ["127.0.0.0/28"]
+    assert all(not c.endswith("/8") for c in cidrs)
+    assert "0.0.0.0/0" not in cidrs
+    assert scope.deepen.ports == "18080"
+
+
+@pytest.mark.integration
+def test_prove_invokes_byo_unicornscan(tmp_path: Path):
+    try:
+        resolve_exec("unicornscan")
+    except Exception:
+        pytest.skip("BYO unicornscan not available")
+    summary = run_prove(
+        out_root=tmp_path, adapter="unicornscan", install_if_missing=False
+    )
+    assert summary["ok"] is True
+    assert summary["adapter"] == "unicornscan"
+    assert len(summary["shards"]) >= 2
+    assert summary["pass1_workers"] >= 2
+    assert summary["pass2_ran"] >= 1
+    assert summary["live_hosts"]
+    assert all(h.startswith("127.0.0.") for h in summary["live_hosts"])
+    argv_files = list(tmp_path.glob("shards/p1-*/argv.json"))
+    assert len(argv_files) >= 2
+    stdout_files = list(tmp_path.glob("shards/p1-*/stdout.log"))
+    assert len(stdout_files) >= 2
+    greppable = "\n".join(p.read_text(encoding="utf-8") for p in stdout_files)
+    assert "TCP open" in greppable
+    assert "127.0.0." in greppable
+    assert "TCP closed" not in greppable
+    for path in argv_files:
+        argv = path.read_text(encoding="utf-8")
+        assert "unicornscan" in argv.lower()
+        assert "18080" in argv
+        assert "-mT" in argv
+        assert "-i" in argv
+        assert "lo" in argv

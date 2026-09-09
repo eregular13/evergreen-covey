@@ -22,10 +22,11 @@ provides the binary. **Nmap** is the first e2e-proven path (`make prove`).
 **braa** is the thirteenth (`python -m covey prove --adapter braa`).
 **ike-scan** is the fourteenth (`python -m covey prove --adapter ike-scan`).
 **svmap** is the fifteenth (`python -m covey prove --adapter svmap`).
-The other 5 remain argv+unit only — do not claim them live. Source of
+**unicornscan** is the sixteenth (`python -m covey prove --adapter unicornscan`).
+The other 4 remain argv+unit only — do not claim them live. Source of
 truth: `E2E_PROVEN_ADAPTERS` (`nmap`, `rustscan`, `fping`, `naabu`,
 `nping`, `httpx`, `sslscan`, `tlsx`, `whatweb`, `hping3`, `onesixtyone`,
-`nbtscan`, `braa`, `ike-scan`, `svmap`) in
+`nbtscan`, `braa`, `ike-scan`, `svmap`, `unicornscan`) in
 `src/covey/adapters/registry.py`. See
 [ADAPTERS.md](ADAPTERS.md) and [PROVE.md](PROVE.md).
 
@@ -103,6 +104,11 @@ UDP echo is not enough (CKY-R=0 is the initiator packet reflected).
 svmap uses `examples/scope.lab.svmap.yaml` (`adapter: svmap`, SCOPE
 ports `18080`) and a SIP/2.0 200 lab on those same addresses — a
 UDP echo is not enough (svmap ignores its own OPTIONS packet).
+unicornscan uses `examples/scope.lab.unicornscan.yaml` (`adapter:
+unicornscan`, SCOPE ports `18080`) and the same loopback lab
+listener rustscan / naabu / nping use. Loopback tiles add `-i lo`
+and source `127.0.0.254` (a same-IP self-scan finds 0). zmap
+cannot observe loopback SYN replies and stays argv+unit.
 arp-scan has no L2 on loopback and stays argv+unit.
 See [PROVE.md](PROVE.md).
 
@@ -203,6 +209,7 @@ python -m covey prove --adapter nbtscan
 python -m covey prove --adapter braa
 python -m covey prove --adapter ike-scan
 python -m covey prove --adapter svmap
+python -m covey prove --adapter unicornscan
 python -m covey export --out out
 # or
 make export
