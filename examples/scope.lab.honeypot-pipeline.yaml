@@ -1,0 +1,23 @@
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: honeypot-lab
+  purpose: evergreen-covey nmap then httpx vs local DataTrap honeypot
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+pipeline:
+- nmap
+- httpx
+max_workers: 1
+max_shards: 8
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 32
+pass2:
+  ports: '8081'
+targets:
+- host: honeypot
+signature: 9c2dbd6de41b6ac51e402b88735107457cb14c9641246acf66d05d3e8ed02138

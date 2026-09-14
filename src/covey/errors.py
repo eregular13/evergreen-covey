@@ -23,3 +23,7 @@ class AdapterError(CoveyError):
 
 class ExportError(CoveyError):
     """Pack export refused or run artifacts are incomplete."""
+
+
+class GateError(CoveyError):
+    """Live push dual-gate failed. Exit 2. No socket."""

@@ -36,7 +36,10 @@ class Adapter(Protocol):
 
 
 def materialize_template(template: list[str], hosts: list[str]) -> list[str]:
-    """Replace a ``{hosts}`` token with one argv entry per host."""
+    """Replace a ``{hosts}`` token with one argv entry per host.
+
+    ``{hosts}:443`` becomes ``10.9.8.7:443`` so sslscan/tls tools keep SCOPE ports.
+    """
     if not hosts:
         raise ValueError("pass2 refuses an empty host list")
     out: list[str] = []
@@ -44,6 +47,9 @@ def materialize_template(template: list[str], hosts: list[str]) -> list[str]:
     for token in template:
         if token == "{hosts}":
             out.extend(hosts)
+            replaced = True
+        elif "{hosts}" in token:
+            out.extend(token.replace("{hosts}", host) for host in hosts)
             replaced = True
         else:
             out.append(token)

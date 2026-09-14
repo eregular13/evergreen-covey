@@ -1,0 +1,21 @@
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: honeypot-lab
+  purpose: evergreen-covey nmap vs local Memcached (no dump/stats spray)
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: nmap
+max_workers: 1
+max_shards: 8
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 32
+pass2:
+  ports: '11211'
+targets:
+- host: memcached
+signature: 7542f82a07b439f183477eb70c221649fcf584337250ea4fb3effb8264bd5e1b

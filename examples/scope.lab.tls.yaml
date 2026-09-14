@@ -1,0 +1,23 @@
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: honeypot-lab
+  purpose: evergreen-covey sslscan vs local self-signed TLS nginx
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+pipeline:
+- nmap
+- sslscan
+max_workers: 1
+max_shards: 8
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 32
+pass2:
+  ports: '443'
+targets:
+- host: tls
+signature: b1690a667043b248d772cd071cf12717d4d84cd02cf4554bfc87fb8a5a250c50

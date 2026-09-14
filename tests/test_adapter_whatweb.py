@@ -44,6 +44,11 @@ def test_parse_url_lines_ignores_banners():
     assert parse_whatweb_live_hosts(text) == ["127.0.0.1", "10.9.8.7", "10.9.8.8"]
 
 
+def test_parse_hostname_url_from_compose_lab():
+    text = "http://honeypot:8081 [200 OK] PHPMyAdmin[5.2.1], Title[phpMyAdmin]\n"
+    assert parse_whatweb_live_hosts(text) == ["honeypot"]
+
+
 def test_parse_live_hosts_from_stdout(tmp_path: Path):
     (tmp_path / "stdout.log").write_text(
         "http://127.0.0.5:18080 [200 OK] Country[RESERVED][ZZ]\n",

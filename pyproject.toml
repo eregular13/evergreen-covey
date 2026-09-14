@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "evergreen-covey"
-version = "0.1.0"
-description = "SCOPE-gated Lego for sharded BYO scanner workers. 20 live adapters; nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, svmap, and unicornscan are e2e-proven."
+version = "0.2.0"
+description = "SCOPE-gated Lego for sharded BYO scanner workers. Pipelines, host/url/domain targets, misconfig findings, CISO/OpenGRC/Probo file export. 20 live adapters; nmap, rustscan, fping, naabu, nping, httpx, sslscan, tlsx, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, svmap, and unicornscan are e2e-proven."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }

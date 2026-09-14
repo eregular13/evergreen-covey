@@ -1,0 +1,23 @@
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: honeypot-lab
+  purpose: evergreen-covey nmap then httpx vs local CORS-star nginx
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+pipeline:
+- nmap
+- httpx
+max_workers: 1
+max_shards: 8
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 32
+pass2:
+  ports: '80'
+targets:
+- host: cors
+signature: a9d578703b415557919c3f48adb7f9d34059eeb06809961c408e0591d4f8928f

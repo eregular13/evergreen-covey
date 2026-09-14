@@ -99,7 +99,7 @@ class SslscanAdapter(LiveAdapter):
             f"--xml={out_prefix}.xml",
             "--show-certificate",
             "--no-colour",
-            "{hosts}",
+            f"{{hosts}}:{self.pass2_port_first}",
         ]
 
     def pass2_argv(self, hosts: list[str], out_prefix: str) -> list[str]:

@@ -27,9 +27,7 @@ def test_pass1_stages_tile_hosts_file():
 def test_pass2_is_httpx_only_against_hosts():
     argv = HttpxAdapter().pass2_argv(["127.0.0.1", "127.0.0.5"], "shards/p2-s00/scan")
     assert argv[0] == "httpx"
-    assert "-title" in argv
-    assert "-status-code" in argv
-    assert "-tech-detect" in argv
+    assert "-json" in argv
     assert argv[argv.index("-l") + 1] == "shards/p2-s00/scan.hosts"
     files = HttpxAdapter().stage_files(
         "pass2", "127.0.0.1,127.0.0.5", "shards/p2-s00/scan"
@@ -52,6 +50,11 @@ def test_parse_url_lines_ignores_banners():
         ]
     )
     assert parse_httpx_live_hosts(text) == ["127.0.0.1", "10.9.8.7", "10.9.8.8"]
+
+
+def test_parse_hostname_url_from_compose_lab():
+    text = "http://honeypot:8081/\nhttp://honeypot:8081 [404] [Flask:3.1.8]\n"
+    assert parse_httpx_live_hosts(text) == ["honeypot"]
 
 
 def test_parse_live_hosts_from_stdout(tmp_path: Path):

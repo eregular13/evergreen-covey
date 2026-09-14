@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import urllib.error
@@ -21,6 +22,11 @@ from covey.adapters import BINARY_ALIASES, adapter_for, tool_env_var
 from covey.adapters.base import Adapter, materialize_template
 from covey.errors import RunnerError
 from covey.plan import Plan, Worker
+
+
+def _windows_need_byo() -> None:
+    if sys.platform == "win32":
+        raise RunnerError("need BYO binary + SCOPE")
 
 NMAP_ENV = "COVEY_NMAP"
 NMAP_IMAGE_ENV = "COVEY_NMAP_IMAGE"
@@ -373,6 +379,7 @@ def ensure_nmap(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install nmap: apt-get not available")
     update = subprocess.run(
@@ -404,6 +411,7 @@ def ensure_nping(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install nping: apt-get not available")
     update = subprocess.run(
@@ -435,6 +443,7 @@ def ensure_fping(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install fping: apt-get not available")
     update = subprocess.run(
@@ -631,6 +640,7 @@ def ensure_sslscan(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install sslscan: apt-get not available")
     update = subprocess.run(
@@ -662,6 +672,7 @@ def ensure_whatweb(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install whatweb: apt-get not available")
     update = subprocess.run(
@@ -693,6 +704,7 @@ def ensure_onesixtyone(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install onesixtyone: apt-get not available")
     update = subprocess.run(
@@ -731,6 +743,7 @@ def ensure_nbtscan(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install nbtscan: apt-get not available")
     update = subprocess.run(
@@ -762,6 +775,7 @@ def ensure_braa(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install braa: apt-get not available")
     update = subprocess.run(
@@ -793,6 +807,7 @@ def ensure_ike_scan(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install ike-scan: apt-get not available")
     update = subprocess.run(
@@ -824,6 +839,7 @@ def ensure_svmap(*, install_if_missing: bool = False) -> ExecSpec:
     except RunnerError:
         if not install_if_missing:
             raise
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install svmap: apt-get not available")
     update = subprocess.run(
@@ -919,6 +935,7 @@ def _grant_unicornscan_modules_read() -> None:
 def _install_unicornscan_deb() -> Path:
     """Download the unicornscan release .deb onto this VM. Never into git."""
     url = _unicornscan_deb_url()
+    _windows_need_byo()
     if shutil.which("apt-get") is None:
         raise RunnerError("cannot prove-install unicornscan: apt-get not available")
     try:
@@ -1009,6 +1026,7 @@ def _grant_hping3_raw_caps(binary: str) -> None:
     """Grant CAP_NET_RAW on this VM only. Never vendors the binary."""
     setcap = shutil.which("setcap") or "/usr/sbin/setcap"
     if not Path(setcap).is_file():
+        _windows_need_byo()
         if shutil.which("apt-get") is None:
             raise RunnerError("cannot grant hping3 raw caps: setcap not available")
         install = subprocess.run(
@@ -1052,6 +1070,7 @@ def ensure_hping3(*, install_if_missing: bool = False) -> ExecSpec:
         elif not install_if_missing:
             raise
         else:
+            _windows_need_byo()
             if shutil.which("apt-get") is None:
                 raise RunnerError("cannot prove-install hping3: apt-get not available")
             update = subprocess.run(
@@ -1250,7 +1269,11 @@ def _write_stage_files(
     prepare = getattr(adapter, "stage_files", None)
     if prepare is None:
         return
-    files = prepare(worker.stage, worker.target, _scan_prefix(worker.id))
+    files = prepare(
+        "pass2" if worker.stage.startswith("pipe:") else worker.stage,
+        worker.target,
+        _scan_prefix(worker.id),
+    )
     if not files:
         return
     for rel, content in files.items():
@@ -1306,7 +1329,7 @@ def _run_one(
     _write_text(artifact_dir / "exit_code", f"{completed.returncode}\n")
 
     live: list[str] = []
-    if worker.stage == "pass1":
+    if worker.stage == "pass1" or worker.stage.startswith("pipe:"):
         live = adapter.parse_live_hosts(artifact_dir)
         _write_text(
             artifact_dir / "live_hosts.json", json.dumps(live, indent=2) + "\n"
@@ -1377,14 +1400,13 @@ def _strip_out_suffix(path: str) -> str:
     return text
 
 
-def _materialize_pass2(
-    plan: Plan,
-    pass1: list[WorkerResult],
+def _materialize_named(
+    workers: list[Worker],
+    live_by_shard: dict[str, list[str]],
     adapter: Adapter,
 ) -> list[Worker]:
-    live_by_shard = {result.shard_id: result.live_hosts for result in pass1}
     ready: list[Worker] = []
-    for worker in plan.pass2_workers:
+    for worker in workers:
         hosts = [h for h in live_by_shard.get(worker.shard_id, []) if h]
         if not hosts:
             continue
@@ -1392,19 +1414,78 @@ def _materialize_pass2(
         prefix = _out_prefix_from_template(template)
         if prefix == "scan":
             prefix = _scan_prefix(worker.id)
-        argv = adapter.pass2_argv(hosts, prefix)
-        if not argv and template:
+        if template and any("{hosts}" in str(token) for token in template):
             argv = materialize_template(template, hosts)
+        else:
+            argv = adapter.pass2_argv(hosts, prefix)
+            if not argv and template:
+                argv = materialize_template(template, hosts)
         ready.append(
             Worker(
                 id=worker.id,
                 shard_id=worker.shard_id,
                 target=",".join(hosts),
-                stage="pass2",
+                stage=worker.stage,
                 argv=argv,
+                tool=worker.tool or adapter.name,
             )
         )
     return ready
+
+
+def _materialize_pass2(
+    plan: Plan,
+    pass1: list[WorkerResult],
+    adapter: Adapter,
+) -> list[Worker]:
+    live_by_shard = {result.shard_id: result.live_hosts for result in pass1}
+    return _materialize_named(plan.pass2_workers, live_by_shard, adapter)
+
+
+def _resolve_file_drop(raw: str) -> Path:
+    rel = Path(str(raw or "").replace("\\", "/"))
+    if rel.is_absolute() or ".." in rel.parts or not str(rel):
+        raise RunnerError("file_drop traversal refused")
+    src = (Path.cwd() / rel).resolve()
+    try:
+        src.relative_to(Path.cwd().resolve())
+    except ValueError as exc:
+        raise RunnerError("file_drop traversal refused") from exc
+    if not src.is_file():
+        raise RunnerError(f"file_drop missing: {raw}")
+    return src
+
+
+def _run_file_drop_ingest(plan: Plan, *, cwd: Path) -> RunReport:
+    """Copy operator-dropped XML into shards. Never spawn a scanner."""
+    results: list[WorkerResult] = []
+    for worker in plan.ingest_workers:
+        artifact_dir = cwd / "shards" / worker.id
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        src = _resolve_file_drop(worker.target)
+        shutil.copy2(src, artifact_dir / "scan.xml")
+        results.append(
+            WorkerResult(
+                id=worker.id,
+                shard_id=worker.shard_id,
+                stage="ingest",
+                target=worker.target,
+                argv=[],
+                exit_code=0,
+                artifact_dir=str(artifact_dir),
+            )
+        )
+    report = RunReport(
+        ok=all(item.ok for item in results) if results else False,
+        exec="file_drop",
+        max_workers=1,
+        pass1=[],
+        pass2=results,
+    )
+    (cwd / "run_report.json").write_text(
+        json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8"
+    )
+    return report
 
 
 def run_plan(
@@ -1417,7 +1498,17 @@ def run_plan(
 ) -> RunReport:
     cwd = Path(out_root)
     cwd.mkdir(parents=True, exist_ok=True)
-    plugin = adapter or adapter_for(plan.adapter)
+    if plan.ingest_workers and not plan.pass1_workers:
+        return _run_file_drop_ingest(plan, cwd=cwd)
+    from types import SimpleNamespace
+
+    deepen = SimpleNamespace(
+        ports=plan.deepen_ports,
+        host_timeout=plan.deepen_host_timeout,
+    )
+    plugin = adapter or adapter_for(plan.adapter, deepen=deepen)
+    if adapter is not None and hasattr(plugin, "apply_deepen"):
+        plugin.apply_deepen(deepen)
     resolved = spec or resolve_exec(plugin.name)
     max_workers = max(1, min(plan.max_workers, 4))
 
@@ -1429,49 +1520,94 @@ def run_plan(
         timeout=timeout,
         adapter=plugin,
     )
-    pass2_workers = _materialize_pass2(plan, pass1, plugin)
-    pass2 = _run_stage(
-        pass2_workers,
-        resolved,
-        cwd=cwd,
-        max_workers=max_workers,
-        timeout=timeout,
-        adapter=plugin,
-    )
-    # Record skipped pass2 workers (no live hosts) so the report is complete.
-    ran_ids = {item.id for item in pass2}
-    for worker in plan.pass2_workers:
-        if worker.id in ran_ids:
-            continue
-        artifact_dir = cwd / "shards" / worker.id
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        _write_text(artifact_dir / "skipped.txt", "no live hosts from pass1\n")
-        pass2.append(
-            WorkerResult(
-                id=worker.id,
-                shard_id=worker.shard_id,
-                stage="pass2",
-                target="",
-                argv=[],
-                exit_code=0,
-                artifact_dir=str(artifact_dir),
-                skipped=True,
+    live_by_shard = {result.shard_id: list(result.live_hosts) for result in pass1}
+    pass2: list[WorkerResult] = []
+    if plan.pipe_workers:
+        steps: list[str] = []
+        for worker in plan.pipe_workers:
+            if worker.stage not in steps:
+                steps.append(worker.stage)
+        for stage in steps:
+            batch = [w for w in plan.pipe_workers if w.stage == stage]
+            tool = (batch[0].tool if batch else None) or stage.split(":", 1)[-1]
+            follow = adapter_for(tool, deepen=deepen)
+            follow_spec = resolve_exec(follow.name)
+            ready = _materialize_named(batch, live_by_shard, follow)
+            ran = _run_stage(
+                ready,
+                follow_spec,
+                cwd=cwd,
+                max_workers=max_workers,
+                timeout=timeout,
+                adapter=follow,
             )
+            ran_ids = {item.id for item in ran}
+            for worker in batch:
+                if worker.id in ran_ids:
+                    continue
+                artifact_dir = cwd / "shards" / worker.id
+                artifact_dir.mkdir(parents=True, exist_ok=True)
+                _write_text(artifact_dir / "skipped.txt", "no live hosts from pass1\n")
+                ran.append(
+                    WorkerResult(
+                        id=worker.id,
+                        shard_id=worker.shard_id,
+                        stage=worker.stage,
+                        target="",
+                        argv=[],
+                        exit_code=0,
+                        artifact_dir=str(artifact_dir),
+                        skipped=True,
+                    )
+                )
+            ran.sort(key=lambda item: item.id)
+            pass2.extend(ran)
+            for result in ran:
+                if result.live_hosts:
+                    live_by_shard[result.shard_id] = list(result.live_hosts)
+    else:
+        pass2_workers = _materialize_pass2(plan, pass1, plugin)
+        pass2 = _run_stage(
+            pass2_workers,
+            resolved,
+            cwd=cwd,
+            max_workers=max_workers,
+            timeout=timeout,
+            adapter=plugin,
         )
-    pass2.sort(key=lambda item: item.id)
+        ran_ids = {item.id for item in pass2}
+        for worker in plan.pass2_workers:
+            if worker.id in ran_ids:
+                continue
+            artifact_dir = cwd / "shards" / worker.id
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            _write_text(artifact_dir / "skipped.txt", "no live hosts from pass1\n")
+            pass2.append(
+                WorkerResult(
+                    id=worker.id,
+                    shard_id=worker.shard_id,
+                    stage="pass2",
+                    target="",
+                    argv=[],
+                    exit_code=0,
+                    artifact_dir=str(artifact_dir),
+                    skipped=True,
+                )
+            )
+        pass2.sort(key=lambda item: item.id)
 
-    for result in pass2:
-        if result.skipped:
-            continue
-        allowed = set()
-        for p1 in pass1:
-            if p1.shard_id == result.shard_id:
-                allowed.update(p1.live_hosts)
-        targeted = [h for h in result.target.split(",") if h]
-        extra = [h for h in targeted if h not in allowed]
-        if extra:
-            result.error = f"pass2 targeted hosts not in pass1: {extra}"
-            result.exit_code = result.exit_code or 2
+        for result in pass2:
+            if result.skipped:
+                continue
+            allowed = set()
+            for p1 in pass1:
+                if p1.shard_id == result.shard_id:
+                    allowed.update(p1.live_hosts)
+            targeted = [h for h in result.target.split(",") if h]
+            extra = [h for h in targeted if h not in allowed]
+            if extra:
+                result.error = f"pass2 targeted hosts not in pass1: {extra}"
+                result.exit_code = result.exit_code or 2
 
     ok = all(item.ok and not item.error for item in pass1 + pass2)
     report = RunReport(

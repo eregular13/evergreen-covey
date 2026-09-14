@@ -48,9 +48,10 @@ spawn them.
 
 ## Quick prove
 
-The operator (or the prove VM) must provide Nmap. `make prove` will use
-`PATH` / `COVEY_NMAP`, or install Nmap **on this machine only** via apt so
-the pipeline can be exercised. Nothing is committed.
+On Debian/Ubuntu, `make prove` may apt-install a missing BYO binary **on this
+machine only**. On Windows, prove never apt-installs: put nmap/httpx on
+`PATH` and pass `--no-install`, or it fails with `need BYO binary + SCOPE`.
+Nothing is committed.
 
 ```bash
 make prove
@@ -114,7 +115,10 @@ See [PROVE.md](PROVE.md).
 
 ## BYO scanners
 
-SCOPE `adapter:` selects one of the 20 live ids. Resolve order:
+SCOPE `adapter:` selects one of the 20 live ids. **Or** `pipeline:` chains
+up to five of them: first adapter discovers, later adapters deepen only
+the live hosts (example: `pipeline: [nmap, httpx, sslscan]`). Nuclei,
+OpenVAS, and LICENSE-LOCK tools are refused in a pipeline. Resolve order:
 
 1. `COVEY_<TOOL>` — absolute path, binary name, or `docker://<image>`
    (`COVEY_NMAP`, `COVEY_ARP_SCAN`, …)
@@ -150,6 +154,7 @@ window:
   start: "2026-01-01T00:00:00Z"
   end: "2029-12-31T23:59:59Z"
 adapter: nmap            # one of the 20 live ids; see ADAPTERS.md
+# pipeline: [nmap, httpx, sslscan]   # optional; skips first-adapter pass2
 max_workers: 2          # cap 1–4; default 2
 allow_wide: false
 tile:
@@ -159,7 +164,15 @@ pass2:
   ports: "22"           # SCOPE-owned deepen ports (Palisade P0)
 targets:
   - cidr: 127.0.0.0/28
+  # - host: web.lab.example
+  # - url: http://127.0.0.1:18081/
+  # - domain: lab.example
+  # - file_drop: in/nessus/lab.nessus   # ingest only; no live spawn
 ```
+
+Target kinds: `cidr` (tiled), `host`, `url` (http/https only), `domain`,
+`file_drop` (relative path, no `..`). String targets remain CIDRs.
+`file_drop` cannot mix with live targets and does not build a spawn plan.
 
 `pass2.ports` (alias `deepen.ports`) is the honest deepen surface — not a
 silent adapter default. Omit it to keep the adapter's built-in list; set it
@@ -211,6 +224,11 @@ python -m covey prove --adapter ike-scan
 python -m covey prove --adapter svmap
 python -m covey prove --adapter unicornscan
 python -m covey export --out out
+python -m covey export --out out --target all
+python -m covey export --out out --target ciso
+python -m covey export --out out --target opengrc
+python -m covey export --out out --target probo
+# --target riskready → WRAP_DEAD exit 2, no HTTP
 # or
 make export
 ```
@@ -219,11 +237,23 @@ make export
 and does **not** invoke a scanner.
 
 `export` reads a prove/run `out/` and writes `out/pack_drop/` for the
-assessment MCP / `grc-collector-pack` **file_drop** (assets, conservative
-open-port findings, small evidence copies). It does **not** POST anywhere
-and does not wrap RiskReady. Honesty baked into `meta.json` and
-`README_EXPORT.md`: surface map ≠ honeypot validated ≠ control operating
-effectiveness. See [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
+assessment MCP / `grc-collector-pack` **file_drop** (assets, open-port
+observations, **misconfig_observed** when httpx/sslscan/whatweb/nmap
+evidence supports it — never invented CVEs or SMBv1-from-HTTP).
+`--target ciso|opengrc|probo|all` also writes Extra Import CSVs / Data
+Manager CSVs / `addFinding` plan JSON under `pack_drop/`. It does **not**
+POST anywhere and does not wrap RiskReady. Honesty baked into `meta.json`
+and `README_EXPORT.md`: surface map ≠ honeypot validated ≠ control
+operating effectiveness. See [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
+
+Collector handoff (do not copy the collector into this tree):
+
+```text
+python -m covey run --scope SCOPE.yaml --out out
+python -m covey export --out out --target all
+# copy out/pack_drop/in/ into grc-collector-pack in/
+# then in the collector: python -m dropbox   /  import_grc --dry-run
+```
 
 ## Layout
 
@@ -233,7 +263,8 @@ effectiveness. See [`docs/EVIDENCE_MATRIX.md`](docs/EVIDENCE_MATRIX.md).
 | `covey.shard` | expand allowed CIDRs into tiles (pure) |
 | `covey.plan` | worker plan JSON, no spawn |
 | `covey.runner` | local subprocess or `docker run`; land stdout/stderr/xml |
-| `covey.export` | Seen → SoR-ready `pack_drop/` (file_drop only) |
+| `covey.export` | Seen → SoR-ready `pack_drop/` + optional CISO/OpenGRC/Probo files |
+| `covey.findings` | Header/TLS/service misconfigs; unknown stays UNMAPPED |
 | `covey.adapters` | 20 live BYO argv+parse adapters + OpenVAS file_drop stub |
 
 See [`ADAPTERS.md`](ADAPTERS.md) and

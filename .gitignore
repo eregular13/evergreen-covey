@@ -12,3 +12,6 @@ htmlcov/
 out/
 *.log
 .DS_Store
+push/
+lab/ciso-db/
+lab/.ciso-lab.env

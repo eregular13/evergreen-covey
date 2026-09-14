@@ -5,7 +5,9 @@ from pathlib import Path
 import pytest
 
 from covey.errors import RunnerError
-from covey.runner import ExecSpec, resolve_exec, resolve_nmap
+from covey.plan import Worker
+from covey.adapters.nmap import NmapAdapter
+from covey.runner import ExecSpec, _materialize_named, resolve_exec, resolve_nmap
 
 
 def test_local_wrap_replaces_binary():
@@ -76,3 +78,30 @@ def test_resolve_docker_ref_without_docker_fails(monkeypatch):
     monkeypatch.setattr("covey.runner.shutil.which", lambda name: None)
     with pytest.raises(RunnerError, match="docker"):
         resolve_nmap()
+
+
+def test_materialize_prefers_plan_template_ports_not_adapter_default():
+    adapter = NmapAdapter()  # default pass2 port 22
+    workers = [
+        Worker(
+            id="p2-s00",
+            shard_id="s00",
+            target="honeypot",
+            stage="pass2",
+            argv_template=[
+                "nmap",
+                "-sV",
+                "-p",
+                "8081",
+                "-oA",
+                "shards/p2-s00/scan",
+                "{hosts}",
+            ],
+            tool="nmap",
+        )
+    ]
+    ready = _materialize_named(workers, {"s00": ["172.26.0.2"]}, adapter)
+    assert ready
+    assert "8081" in ready[0].argv
+    assert ready[0].argv[ready[0].argv.index("-p") + 1] == "8081"
+    assert "22" not in ready[0].argv or ready[0].argv[ready[0].argv.index("-p") + 1] != "22"

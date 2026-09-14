@@ -1,0 +1,22 @@
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: honeypot-lab
+  purpose: evergreen-covey httpx vs local DataTrap phpMyAdmin HTTP honeypot
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+adapter: httpx
+max_workers: 1
+max_shards: 8
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 32
+pass2:
+  ports: '8081'
+targets:
+- host: honeypot
+- url: http://honeypot:8081/
+signature: 8038a76f4738fb1f81303c37a212064d46cf7d8fc25b4c57ff243607224d5282

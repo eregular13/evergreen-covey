@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from ipaddress import IPv4Address
 from pathlib import Path
 
 from covey.adapters.common import (
@@ -17,11 +19,49 @@ from covey.adapters.common import (
 )
 from covey.errors import AdapterError
 
-# Silent/file lines: "http://10.9.8.7" / "https://127.0.0.1:18080 [200]"
+# Silent/file lines: "http://10.9.8.7" / "https://honeypot:8081 [200]"
 _URL_HOST = re.compile(
-    r"(https?)://(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?",
+    r"(https?)://([A-Za-z0-9._-]+)(?::(\d+))?",
     re.IGNORECASE,
 )
+
+# Browser-like GET so DataTrap (and similar) classify the request as a document.
+_HTTPX_JSON_FLAGS = [
+    "-json",
+    "-include-response-header",
+    "-title",
+    "-H",
+    "Accept: text/html,application/xhtml+xml",
+]
+
+
+def _skip_httpx_host(host: str) -> bool:
+    """Drop 0.0.0.0-class IPs. Hostnames from URL targets are live."""
+    try:
+        IPv4Address(host)
+    except ValueError:
+        return not host
+    return is_skipped_ip(host)
+
+
+def _probe_line(host: str, ports: str) -> str:
+    """Bare hostname + one SCOPE port becomes an http(s) URL so httpx -l probes."""
+    text = (host or "").strip()
+    if not text:
+        return ""
+    if text.lower().startswith("http://") or text.lower().startswith("https://"):
+        return text
+    port_list = [part.strip() for part in str(ports or "").split(",") if part.strip()]
+    try:
+        IPv4Address(text.split("/")[0])
+        return text
+    except ValueError:
+        pass
+    if len(port_list) != 1:
+        return text
+    port = port_list[0]
+    scheme = "https" if port in {"443", "8443"} else "http"
+    return f"{scheme}://{text}:{port}"
 
 
 def parse_httpx_live_hosts(text: str) -> list[str]:
@@ -29,11 +69,25 @@ def parse_httpx_live_hosts(text: str) -> list[str]:
     hosts: list[str] = []
     seen: set[str] = set()
     for line in (text or "").splitlines():
-        match = _URL_HOST.search(line)
+        stripped = line.strip()
+        url = ""
+        if stripped.startswith("{"):
+            try:
+                obj = json.loads(stripped)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict):
+                url = str(obj.get("url") or "")
+                host = str(obj.get("host") or "")
+                if host and host not in seen and not _skip_httpx_host(host):
+                    seen.add(host)
+                    hosts.append(host)
+                    continue
+        match = _URL_HOST.search(url or stripped)
         if not match:
             continue
         ip = match.group(2)
-        if ip in seen or is_skipped_ip(ip):
+        if ip in seen or _skip_httpx_host(ip):
             continue
         seen.add(ip)
         hosts.append(ip)
@@ -49,7 +103,7 @@ def parse_httpx_services(text: str) -> list[dict[str, str]]:
             continue
         scheme = match.group(1).lower()
         ip = match.group(2)
-        if is_skipped_ip(ip):
+        if _skip_httpx_host(ip):
             continue
         port = match.group(3) or ("443" if scheme == "https" else "80")
         services.append(open_port_row(ip, port, service=scheme))
@@ -79,13 +133,13 @@ class HttpxAdapter(LiveAdapter):
 
     def pass1_argv(self, target: str, out_prefix: str) -> list[str]:
         require_target_prefix(target, out_prefix, name=self.name)
-        return self._argv(out_prefix)
+        return self._argv(out_prefix, extra=list(_HTTPX_JSON_FLAGS))
 
     def pass2_argv_template(self, out_prefix: str) -> list[str]:
         require_target_prefix(".", out_prefix, name=self.name)
         return self._argv(
             out_prefix,
-            extra=["-title", "-status-code", "-tech-detect"],
+            extra=list(_HTTPX_JSON_FLAGS),
         )
 
     def pass2_argv(self, hosts: list[str], out_prefix: str) -> list[str]:
@@ -104,7 +158,9 @@ class HttpxAdapter(LiveAdapter):
             hosts = [part.strip() for part in target.split(",") if part.strip()]
         else:
             hosts = tile_hosts(target)
-        return {hosts_file_path(out_prefix): "".join(f"{host}\n" for host in hosts)}
+        lines = [_probe_line(host, self.pass2_ports) for host in hosts]
+        lines = [line for line in lines if line]
+        return {hosts_file_path(out_prefix): "".join(f"{line}\n" for line in lines)}
 
 
 def get_adapter() -> HttpxAdapter:

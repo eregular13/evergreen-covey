@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from covey import __version__
-from covey.errors import CoveyError
+from covey.errors import CoveyError, ExportError, GateError
 from covey.export import export_pack
 from covey.plan import build_plan
 from covey.prove import run_prove
@@ -34,8 +34,11 @@ def _cmd_run(args: argparse.Namespace) -> int:
     (out_root / "plan.json").write_text(
         json.dumps(plan.to_dict(), indent=2) + "\n", encoding="utf-8"
     )
-    spec = resolve_exec(plan.adapter)
-    report = run_plan(plan, out_root=out_root, spec=spec)
+    if plan.ingest_workers and not plan.pass1_workers:
+        report = run_plan(plan, out_root=out_root)
+    else:
+        spec = resolve_exec(plan.adapter)
+        report = run_plan(plan, out_root=out_root, spec=spec)
     print(f"run {'ok' if report.ok else 'failed'} via {report.exec}")
     print(f"  pass1 live hosts: {', '.join(report.all_pass1_hosts()) or '(none)'}")
     return 0 if report.ok else 1
@@ -60,13 +63,25 @@ def _cmd_prove(args: argparse.Namespace) -> int:
 
 
 def _cmd_export(args: argparse.Namespace) -> int:
-    summary = export_pack(Path(args.out))
+    if args.target == "riskready":
+        print("WRAP_DEAD: RiskReady stay-out. No HTTP. File drop only.", file=sys.stderr)
+        return 2
+    summary = export_pack(Path(args.out), target=args.target, live=bool(args.live))
     print(f"wrote {summary['pack']} (run_id={summary['run_id']})")
+    print(f"  target    {summary.get('target')}")
     print(f"  assets    {summary['assets']}")
     print(f"  findings  {summary['findings']}")
-    print("  ingest    file_drop only — no RiskReady POST")
+    print("  ingest    file_drop; live CISO assets/evidences + findings if gated; no RiskReady POST")
     print("  honesty   surface map ≠ honeypot validated ≠ control operating effectiveness")
     return 0
+
+
+def _cmd_assess(args: argparse.Namespace) -> int:
+    """Unattended within a signed SCOPE: run then export. Live still dual-gated."""
+    rc = _cmd_run(args)
+    if rc != 0:
+        return rc
+    return _cmd_export(args)
 
 
 def _cmd_sign(args: argparse.Namespace) -> int:
@@ -119,11 +134,40 @@ def build_parser() -> argparse.ArgumentParser:
         default="out",
         help="prove/run artifact root; writes <out>/pack_drop/",
     )
+    export.add_argument(
+        "--target",
+        choices=("pack_drop", "ciso", "opengrc", "probo", "all", "riskready"),
+        default="pack_drop",
+        help="pack_drop JSONL (default); ciso/opengrc/probo file imports; riskready WRAP_DEAD",
+    )
+    export.add_argument(
+        "--live",
+        action="store_true",
+        help="dual-gate live push. CISO: assets+evidences; findings only with CISO_FINDINGS_ASSESSMENT UUID. Probo: createFinding. OpenGRC refused. RiskReady WRAP_DEAD.",
+    )
     export.set_defaults(func=_cmd_export)
 
     sign = sub.add_parser("sign", help="HMAC-sign a demo SCOPE in place")
     sign.add_argument("--scope", required=True)
     sign.set_defaults(func=_cmd_sign)
+
+    assess = sub.add_parser(
+        "assess",
+        help="signed SCOPE run then GRC export (unattended within SCOPE; live still dual-gated)",
+    )
+    assess.add_argument("--scope", required=True, help="signed SCOPE YAML")
+    assess.add_argument("--out", default="out")
+    assess.add_argument(
+        "--target",
+        choices=("pack_drop", "ciso", "opengrc", "probo", "all", "riskready"),
+        default="all",
+    )
+    assess.add_argument(
+        "--live",
+        action="store_true",
+        help="dual-gate live push after export. Default dry-run files only.",
+    )
+    assess.set_defaults(func=_cmd_assess)
 
     return parser
 
@@ -133,6 +177,9 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
+    except (ExportError, GateError) as exc:
+        print(f"covey: {exc}", file=sys.stderr)
+        return 2
     except CoveyError as exc:
         print(f"covey: {exc}", file=sys.stderr)
         return 1

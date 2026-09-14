@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -11,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import yaml
 
@@ -33,6 +35,12 @@ _MAX_SHARDS_DEFAULT = 64
 # nmap-ish port lists: 22 / 22,80,443 / 8000-8080 / T:22,U:53
 _PORT_SPEC_RE = re.compile(r"^[0-9TU:,-]+$", re.IGNORECASE)
 _HOST_TIMEOUT_RE = re.compile(r"^[0-9]+(?:\.[0-9]+)?[smh]?$", re.IGNORECASE)
+_HOST_RE = re.compile(
+    r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+    r"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$"
+)
+_TARGET_KIND_KEYS = ("cidr", "host", "url", "domain", "file_drop")
+_MAX_PIPELINE = 5
 
 
 def _utc_now() -> datetime:
@@ -94,6 +102,14 @@ class Target:
     cidr: str
     allow_wide: bool
     listed: str
+    kind: str = "cidr"
+    value: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.value:
+            self.value = self.cidr
+        if self.kind == "cidr" and not self.cidr:
+            self.cidr = self.value
 
     def network(self):
         return parse_v4_network(self.cidr)
@@ -133,6 +149,7 @@ class Scope:
     signature: str
     raw: dict[str, Any] = field(repr=False)
     deepen: Deepen = field(default_factory=Deepen)
+    pipeline: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def listed_cidrs(self) -> set[str]:
@@ -261,6 +278,80 @@ def parse_deepen(data: dict[str, Any]) -> Deepen:
     return Deepen(ports=ports, host_timeout=host_timeout)
 
 
+def _is_ipv4_literal(text: str) -> bool:
+    try:
+        ipaddress.IPv4Address(text)
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_hostname(token: str, *, field: str) -> str:
+    text = (token or "").strip()
+    if not text or is_always_refused_token(text) or "/" in text or "*" in text:
+        raise ScopeError(f"refused {field} target: {token}")
+    if _is_ipv4_literal(text):
+        if text in {"0.0.0.0", "255.255.255.255"}:
+            raise ScopeError(f"refused {field} target: {text}")
+        return text
+    if not _HOST_RE.fullmatch(text):
+        raise ScopeError(f"SCOPE {field} is not a hostname: {text}")
+    return text
+
+
+def _parse_host_target(raw: Any, *, field: str) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ScopeError(f"SCOPE {field} missing")
+    return _validate_hostname(raw, field=field)
+
+
+def _parse_url_target(raw: Any) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ScopeError("SCOPE url missing")
+    text = raw.strip()
+    parsed = urlparse(text)
+    if parsed.scheme not in {"http", "https"}:
+        raise ScopeError("SCOPE url must be http or https")
+    host = parsed.hostname
+    if not host:
+        raise ScopeError("SCOPE url host missing")
+    _validate_hostname(host, field="url")
+    return text
+
+
+def _parse_file_drop(raw: Any) -> str:
+    if not isinstance(raw, str) or not raw.strip():
+        raise ScopeError("SCOPE file_drop missing")
+    path = raw.strip().replace("\\", "/")
+    if path.startswith("/") or (len(path) > 1 and path[1] == ":"):
+        raise ScopeError("SCOPE file_drop must be a relative path")
+    parts = [part for part in path.split("/") if part]
+    if ".." in parts:
+        raise ScopeError("SCOPE file_drop traversal refused")
+    if not parts:
+        raise ScopeError("SCOPE file_drop missing")
+    return path
+
+
+def _cidr_target(token: str, *, allow_wide: bool) -> Target:
+    if is_always_refused_token(token):
+        raise ScopeError(f"refused wide spray target: {token}")
+    net = parse_v4_network(token)
+    listed = str(net)
+    if is_wide_network(net) and not allow_wide:
+        raise ScopeError(
+            f"{listed} is /{net.prefixlen} (/8–/16); set allow_wide: true "
+            "and list this parent CIDR explicitly"
+        )
+    return Target(
+        cidr=token,
+        allow_wide=allow_wide,
+        listed=listed,
+        kind="cidr",
+        value=token,
+    )
+
+
 def parse_targets(raw: Any, *, global_allow_wide: bool) -> list[Target]:
     if raw is None:
         raise ScopeError("SCOPE targets missing")
@@ -270,33 +361,96 @@ def parse_targets(raw: Any, *, global_allow_wide: bool) -> list[Target]:
     targets: list[Target] = []
     for item in raw:
         if isinstance(item, str):
-            cidr = item
-            allow_wide = global_allow_wide
-        elif isinstance(item, dict):
-            cidr = item.get("cidr") or item.get("target") or ""
-            allow_wide = _as_bool(item.get("allow_wide"), default=global_allow_wide)
-        else:
+            targets.append(_cidr_target(item, allow_wide=global_allow_wide))
+            continue
+        if not isinstance(item, dict):
             raise ScopeError("each SCOPE target must be a CIDR string or mapping")
 
-        if not isinstance(cidr, str) or not cidr.strip():
-            raise ScopeError("SCOPE target cidr missing")
-        token = cidr.strip()
-        if is_always_refused_token(token):
-            raise ScopeError(f"refused wide spray target: {token}")
-
-        net = parse_v4_network(token)
-        listed = str(net)
-        if is_wide_network(net):
-            if not allow_wide:
-                raise ScopeError(
-                    f"{listed} is /{net.prefixlen} (/8–/16); set allow_wide: true "
-                    "and list this parent CIDR explicitly"
+        present = [key for key in _TARGET_KIND_KEYS if item.get(key)]
+        if "target" in item and item.get("target") and "cidr" not in present:
+            present.append("cidr")
+        if len(present) > 1:
+            raise ScopeError(
+                "each SCOPE target needs exactly one of cidr/host/url/domain/file_drop"
+            )
+        kind = present[0] if present else ""
+        allow_wide = _as_bool(item.get("allow_wide"), default=global_allow_wide)
+        if kind in {"", "cidr"}:
+            cidr = item.get("cidr") or item.get("target") or ""
+            if not isinstance(cidr, str) or not cidr.strip():
+                raise ScopeError("SCOPE target cidr missing")
+            targets.append(_cidr_target(cidr.strip(), allow_wide=allow_wide))
+            continue
+        if kind == "host":
+            host = _parse_host_target(item.get("host"), field="host")
+            targets.append(
+                Target(cidr="", allow_wide=False, listed=host, kind="host", value=host)
+            )
+            continue
+        if kind == "domain":
+            domain = _parse_host_target(item.get("domain"), field="domain")
+            targets.append(
+                Target(
+                    cidr="",
+                    allow_wide=False,
+                    listed=domain,
+                    kind="domain",
+                    value=domain,
                 )
-            # Parent CIDR must appear verbatim as a listed target (this one).
-            if listed != str(net):
-                raise ScopeError(f"wide parent CIDR must be listed verbatim: {listed}")
-        targets.append(Target(cidr=token, allow_wide=allow_wide, listed=listed))
+            )
+            continue
+        if kind == "url":
+            url = _parse_url_target(item.get("url"))
+            targets.append(
+                Target(cidr="", allow_wide=False, listed=url, kind="url", value=url)
+            )
+            continue
+        path = _parse_file_drop(item.get("file_drop"))
+        targets.append(
+            Target(
+                cidr="",
+                allow_wide=False,
+                listed=path,
+                kind="file_drop",
+                value=path,
+            )
+        )
     return targets
+
+
+def parse_pipeline(data: dict[str, Any]) -> tuple[str, tuple[str, ...]]:
+    """Return (adapter, pipeline). pipeline is at least (adapter,)."""
+    from covey.adapters.registry import (
+        FILE_DROP_IDS,
+        FORBIDDEN_LIVE,
+        LIVE_ADAPTER_IDS,
+        normalize_adapter_name,
+    )
+
+    raw = data.get("pipeline")
+    adapter = str(data.get("adapter") or "nmap").strip() or "nmap"
+    if raw is None:
+        return adapter, (normalize_adapter_name(adapter),)
+    if not isinstance(raw, list) or not raw:
+        raise ScopeError("SCOPE pipeline must be a non-empty list")
+    names = [str(item).strip() for item in raw]
+    if any(not item for item in names):
+        raise ScopeError("SCOPE pipeline entries must be adapter ids")
+    if len(names) > _MAX_PIPELINE:
+        raise ScopeError(f"SCOPE pipeline longer than {_MAX_PIPELINE}")
+    if len(set(names)) != len(names):
+        raise ScopeError("SCOPE pipeline has duplicate adapters")
+    normalized: list[str] = []
+    for name in names:
+        key = normalize_adapter_name(name)
+        if key in FORBIDDEN_LIVE:
+            raise ScopeError(f"{name} is forbidden by LICENSE-LOCK")
+        if key in FILE_DROP_IDS:
+            raise ScopeError(f"{name} is file_drop only — not a live pipeline stage")
+        if key not in LIVE_ADAPTER_IDS:
+            raise ScopeError(f"unknown pipeline adapter {name!r}")
+        normalized.append(key)
+    return normalized[0], tuple(normalized)
 
 
 def from_mapping(data: dict[str, Any], *, verify: bool = True) -> Scope:
@@ -346,7 +500,7 @@ def from_mapping(data: dict[str, Any], *, verify: bool = True) -> Scope:
         lo=1,
         hi=4096,
     )
-    adapter = str(data.get("adapter") or "nmap").strip() or "nmap"
+    adapter, pipeline = parse_pipeline(data)
     deepen = parse_deepen(data)
     default_tile = _as_int(
         tile.get("default_prefix"),
@@ -382,6 +536,7 @@ def from_mapping(data: dict[str, Any], *, verify: bool = True) -> Scope:
         small_tile=small_tile,
         signature=str(data.get("signature") or ""),
         deepen=deepen,
+        pipeline=pipeline,
         raw=data,
     )
     return scope

@@ -1,0 +1,24 @@
+version: 1
+demo: true
+consent:
+  signed: true
+  signer: honeypot-lab
+  purpose: evergreen-covey nmap then tlsx vs local self-signed TLS nginx
+window:
+  start: '2026-01-01T00:00:00Z'
+  end: '2029-12-31T23:59:59Z'
+pipeline:
+- nmap
+- sslscan
+- tlsx
+max_workers: 1
+max_shards: 8
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 32
+pass2:
+  ports: '443'
+targets:
+- host: tls
+signature: 0f05c93e1e8e54cab0624435d66c6dbd1d8a2f4df5d2fb24c7f0a77306cbbbad

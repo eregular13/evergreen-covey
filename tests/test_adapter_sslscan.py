@@ -61,3 +61,10 @@ def test_scope_ports_flow_into_both_passes():
     p2 = adapter.pass2_argv(["127.0.0.1"], "shards/p2-s00/scan")
     assert p1[-1] == "127.0.0.1:18080"
     assert p2[-1] == "127.0.0.1:18080"
+
+
+def test_pass2_template_bakes_scope_port():
+    adapter = SslscanAdapter()
+    adapter.apply_deepen(type("D", (), {"ports": "8443", "host_timeout": None})())
+    tmpl = adapter.pass2_argv_template("shards/p2-s00/scan")
+    assert "{hosts}:8443" in tmpl

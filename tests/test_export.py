@@ -257,10 +257,14 @@ def test_export_rustscan_stdout_writes_hosts_and_services(tmp_path: Path):
     assert all(row["state"] == "open" for row in services)
     findings = _read_jsonl(pack / "findings.jsonl")
     assert findings
-    assert all(row["claim"] == "open_port_observed" for row in findings)
-    assert all(row["severity"] == "info" for row in findings)
+    assert all(
+        row["claim"] in {"open_port_observed", "misconfig_observed"} for row in findings
+    )
     assert all("vulnerability" in row["not_claimed"] for row in findings)
     assert all("control_operating_effectiveness" in row["not_claimed"] for row in findings)
+    port_rows = [row for row in findings if row["claim"] == "open_port_observed"]
+    assert port_rows
+    assert all(row["severity"] == "info" for row in port_rows)
 
 
 def test_export_httpx_stdout_writes_hosts_and_https_services(tmp_path: Path):
@@ -276,8 +280,9 @@ def test_export_httpx_stdout_writes_hosts_and_https_services(tmp_path: Path):
         ("10.9.8.8", 443, "https"),
     }
     findings = _read_jsonl(pack / "findings.jsonl")
-    assert all(row["claim"] == "open_port_observed" for row in findings)
-    assert all(row.get("port") == 443 for row in findings)
+    port_rows = [row for row in findings if row["claim"] == "open_port_observed"]
+    assert port_rows
+    assert all(row.get("port") == 443 for row in port_rows)
 
 
 def test_export_unicornscan_stdout_writes_tcp_open_only(tmp_path: Path):
@@ -330,7 +335,7 @@ def test_export_normalizes_all_e2e_proven_adapters(tmp_path: Path, adapter: str)
     hosts = [row for row in assets if row["kind"] == "host"]
     assert hosts, f"{adapter} export must write at least one host"
     findings = _read_jsonl(pack / "findings.jsonl")
-    assert all(row["claim"] == "open_port_observed" for row in findings)
+    assert all(row["claim"] in {"open_port_observed", "misconfig_observed"} for row in findings)
     assert all("vulnerability" in row["not_claimed"] for row in findings)
 
 
@@ -409,3 +414,113 @@ def test_honeypot_schemas_exist():
     assert "event_id" in event["required"]
     assert "session_id" in session["required"]
     assert Path("docs/honeypot_pack_drop.md").is_file()
+
+
+def test_export_ingests_openvas_cve_not_nmap_cve(tmp_path: Path) -> None:
+    run = _seed_run(tmp_path)
+    nmap_xml = run / "shards" / "p1-s00" / "scan.xml"
+    nmap_xml.write_text(
+        nmap_xml.read_text(encoding="utf-8") + " CVE-2024-1234\n",
+        encoding="utf-8",
+    )
+    drop = run / "shards" / "drop-openvas"
+    drop.mkdir(parents=True)
+    (drop / "scan.xml").write_text(
+        """<openvas>
+    <result>
+    <host>10.9.8.7</host>
+    <nvt>
+    <ref type="cve" id="CVE-2024-9999"/>
+    </nvt>
+    </result>
+    </openvas>
+    """,
+        encoding="utf-8",
+    )
+    summary = export_pack(run, target="ciso")
+    pack = Path(summary["pack"])
+    findings = [
+        json.loads(line)
+        for line in (pack / "findings.jsonl").read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    ingested = [
+        row
+        for row in findings
+        if row.get("claim") == "vuln_ingested"
+    ]
+    assert any(row.get("cve") == "CVE-2024-9999" for row in ingested)
+    assert all(row.get("cve") != "CVE-2024-1234" for row in ingested)
+    assert all(row.get("address") == "10.9.8.7" for row in ingested)
+    assert all(row.get("address") != "file_drop" for row in ingested)
+    vulns = (pack / "ciso-assistant" / "vulnerabilities.csv").read_text(encoding="utf-8")
+    assert "CVE-2024-9999" in vulns
+    assert "10.9.8.7" in vulns
+    assert "CVE-2024-1234" not in vulns
+    assert "file_drop" not in vulns
+
+
+def test_export_nessus_cve_assets_use_reporthost(tmp_path: Path) -> None:
+    run = _seed_run(tmp_path)
+    drop = run / "shards" / "drop-nessus"
+    drop.mkdir(parents=True)
+    (drop / "scan.xml").write_text(
+        """<?xml version="1.0"?>
+<NessusClientData_v2>
+  <Report name="lab">
+    <ReportHost name="10.9.8.7">
+      <ReportItem port="443" pluginID="1" pluginName="OpenSSL">
+        <cve>CVE-2024-7777</cve>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>
+""",
+        encoding="utf-8",
+    )
+    summary = export_pack(run, target="ciso")
+    pack = Path(summary["pack"])
+    ingested = []
+    for line in (pack / "findings.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line:
+            continue
+        row = json.loads(line)
+        if row.get("cve") == "CVE-2024-7777":
+            ingested.append(row)
+    assert ingested and ingested[0]["address"] == "10.9.8.7"
+    vulns = (pack / "ciso-assistant" / "vulnerabilities.csv").read_text(encoding="utf-8")
+    assert "CVE-2024-7777" in vulns
+    assert "10.9.8.7" in vulns
+    assert "file_drop" not in vulns
+
+
+def test_export_file_drop_cve_host_becomes_pack_and_ciso_asset(tmp_path: Path) -> None:
+    run = _seed_run(tmp_path)
+    drop = run / "shards" / "drop-nessus"
+    drop.mkdir(parents=True)
+    (drop / "scan.xml").write_text(
+        """<?xml version="1.0"?>
+<NessusClientData_v2>
+  <Report name="lab">
+    <ReportHost name="10.9.8.7">
+      <ReportItem port="443" pluginID="1" pluginName="OpenSSL">
+        <cve>CVE-2024-7777</cve>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>
+""",
+        encoding="utf-8",
+    )
+    summary = export_pack(run, target="ciso")
+    pack = Path(summary["pack"])
+    hosts = {
+        row["address"]
+        for row in _read_jsonl(pack / "assets.jsonl")
+        if row.get("kind") == "host"
+    }
+    assert "10.9.8.7" in hosts
+    assert "file_drop" not in hosts
+    assets_csv = (pack / "ciso-assistant" / "assets.csv").read_text(encoding="utf-8")
+    assert "10.9.8.7" in assets_csv
+    assert ",PR," in assets_csv

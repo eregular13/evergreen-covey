@@ -43,6 +43,13 @@ def test_materialize_hosts_token():
     ]
 
 
+def test_materialize_hosts_token_with_port_suffix():
+    assert materialize_template(["sslscan", "{hosts}:443"], ["172.26.0.4"]) == [
+        "sslscan",
+        "172.26.0.4:443",
+    ]
+
+
 def test_parse_xml_live_hosts():
     hosts = parse_nmap_xml_live_hosts(FIXTURES / "scan_up.xml")
     assert hosts == ["127.0.0.1", "127.0.0.3"]

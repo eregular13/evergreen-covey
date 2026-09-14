@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -20,7 +21,32 @@ from covey.adapters.nmap import (
     parse_nmap_xml_services,
 )
 from covey.adapters.registry import adapter_for
-from covey.errors import ExportError
+from covey.errors import ExportError, GateError
+from covey.findings import (
+    findings_from_file_drop,
+    findings_from_httpx_jsonl,
+    findings_from_httpx_lines,
+    findings_from_nmap_services,
+    findings_from_sslscan,
+    findings_from_tlsx,
+    findings_from_whatweb,
+)
+from covey.grc import (
+    ciso_finding_asset_id,
+    ciso_finding_evidence_ids,
+    fetch_ciso_finding,
+    fetch_probo_finding,
+    push_ciso_assets_evidences,
+    push_ciso_findings,
+    push_probo_findings,
+    refuse_opengrc_live,
+    refuse_riskready,
+    require_ciso_gate,
+    require_probo_gate,
+    write_ciso,
+    write_opengrc,
+    write_probo,
+)
 
 PACK_DIR_NAME = "pack_drop"
 SCHEMA_ID = "evergreen.pack_drop.v1"
@@ -35,6 +61,7 @@ HONESTY = {
     "surface_map": True,
     "honeypot_validated": False,
     "control_operating_effectiveness": False,
+    "riskready_post": False,
     "note": HONESTY_LINE,
 }
 
@@ -159,6 +186,31 @@ def _looks_like_nmap_xml(path: Path) -> bool:
     except OSError:
         return False
     return "<nmaprun" in head
+
+
+def _shard_tool(directory: Path, fallback: str) -> str:
+    argv_path = directory / "argv.json"
+    if argv_path.is_file():
+        try:
+            loaded = json.loads(argv_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            loaded = None
+        if isinstance(loaded, list) and loaded:
+            name = Path(str(loaded[0])).name.lower()
+            for tool in (
+                "httpx",
+                "sslscan",
+                "tlsx",
+                "whatweb",
+                "nmap",
+                "naabu",
+                "rustscan",
+            ):
+                if tool in name:
+                    return tool
+    if (directory / "scan.xml").is_file() and _looks_like_nmap_xml(directory / "scan.xml"):
+        return "nmap"
+    return fallback
 
 
 def _add_hosts(hosts: list[str], seen: set[str], found: list[str]) -> None:
@@ -384,6 +436,40 @@ def _build_assets(
     return rows
 
 
+def _assets_from_ingested_findings(
+    assets: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    *,
+    adapter: str,
+) -> list[dict[str, Any]]:
+    """Host assets from file_drop CVE pairing so CISO live can attach FindingWrite.asset."""
+    seen = {
+        str(row.get("address") or "").strip()
+        for row in assets
+        if row.get("kind") == "host"
+    }
+    extra: list[dict[str, Any]] = []
+    for row in findings:
+        if row.get("claim") != "vuln_ingested":
+            continue
+        address = str(row.get("address") or "").strip()
+        if not address or address.lower() in {"file_drop", "unknown-host"}:
+            continue
+        if address in seen:
+            continue
+        seen.add(address)
+        extra.append(
+            {
+                "kind": "host",
+                "address": address,
+                "state": "up",
+                "source": "file_drop",
+                "adapter": adapter,
+            }
+        )
+    return extra
+
+
 def _build_findings(
     services: list[dict[str, str]], *, adapter: str
 ) -> list[dict[str, Any]]:
@@ -416,6 +502,52 @@ def _build_findings(
             }
         )
     return findings
+
+
+def _misconfig_findings(
+    shard_dirs: list[Path],
+    services: list[dict[str, str]],
+    *,
+    adapter: str,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    rows.extend(findings_from_nmap_services(services, adapter=adapter))
+    from covey.adapters.common import read_artifact_blob
+
+    for directory in shard_dirs:
+        blob = read_artifact_blob(directory)
+        tool = _shard_tool(directory, adapter)
+        if tool in {"httpx", "whatweb"}:
+            rows.extend(findings_from_httpx_jsonl(blob, adapter=tool))
+        rows.extend(findings_from_httpx_lines(blob, adapter=tool))
+        host = ""
+        for line in blob.splitlines():
+            if line.lower().startswith("connected to "):
+                host = line.split()[-1].strip()
+                break
+        if tool in {"sslscan", "tlsx"} and (
+            "connected to " in blob.lower()
+            or "sslv" in blob.lower()
+            or "<ssltest" in blob.lower()
+            or "self signed" in blob.lower()
+        ):
+            rows.extend(
+                findings_from_sslscan(blob, host=host or "unknown-host", adapter=tool)
+            )
+        if tool == "tlsx":
+            rows.extend(findings_from_tlsx(blob, adapter=tool))
+        if tool == "whatweb":
+            rows.extend(findings_from_whatweb(blob, adapter=tool))
+        rows.extend(findings_from_file_drop(blob, adapter="openvas"))
+    seen: set[tuple[str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        key = (str(row.get("address") or ""), str(row.get("name") or row.get("title") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out
 
 
 def _copy_or_pointer(
@@ -458,8 +590,10 @@ def _collect_evidence(
     ingest_dir = pack / "in" / ("nmap" if adapter == "nmap" else adapter)
     evidence_dir.mkdir(parents=True, exist_ok=True)
     ingest_dir.mkdir(parents=True, exist_ok=True)
-    # Mirror-friendly nmap folder always exists for pack ingest.
+    # Mirror-friendly ingest folders for grc-collector-pack.
     (pack / "in" / "nmap").mkdir(parents=True, exist_ok=True)
+    (pack / "in" / "easm").mkdir(parents=True, exist_ok=True)
+    (pack / "in" / "vuln").mkdir(parents=True, exist_ok=True)
 
     records: list[dict[str, Any]] = []
     for directory in shard_dirs:
@@ -478,6 +612,15 @@ def _collect_evidence(
                 if adapter != "nmap" and src.suffix in {".xml", ".gnmap"}:
                     shutil.copy2(src, pack / "in" / "nmap" / ingest_name)
             records.append(record)
+        stdout = directory / "stdout.log"
+        if stdout.is_file():
+            if adapter in {"httpx", "whatweb"}:
+                shutil.copy2(stdout, pack / "in" / "easm" / f"{worker}.txt")
+            if adapter in {"sslscan", "tlsx"}:
+                shutil.copy2(stdout, pack / "in" / "vuln" / f"{worker}.txt")
+        for jsonl in directory.glob("*.jsonl"):
+            if adapter == "httpx":
+                shutil.copy2(jsonl, pack / "in" / "easm" / jsonl.name)
         for name in POINTER_ONLY_NAMES:
             src = directory / name
             if not src.is_file():
@@ -560,8 +703,13 @@ def export_pack(
     max_evidence_bytes: int = DEFAULT_MAX_EVIDENCE_BYTES,
     created_at: str | None = None,
     cwd: Path | None = None,
+    target: str = "pack_drop",
+    live: bool = False,
 ) -> dict[str, Any]:
     """Write ``pack_drop/`` from a `prove` / `run` artifact tree."""
+    wanted = (target or "pack_drop").lower()
+    if wanted == "riskready":
+        refuse_riskready()
     run_root, pack = resolve_paths(out)
     if not run_root.is_dir():
         raise ExportError(f"run out dir missing: {run_root}")
@@ -588,11 +736,12 @@ def export_pack(
     services: list[dict[str, str]] = []
     seen_svc: set[tuple[str, str, str]] = set()
     for directory in shard_dirs:
-        for host in _parse_hosts(directory, adapter):
+        tool = _shard_tool(directory, adapter)
+        for host in _parse_hosts(directory, tool):
             if host not in seen_hosts:
                 seen_hosts.add(host)
                 hosts.append(host)
-        for service in _parse_services(directory, adapter):
+        for service in _parse_services(directory, tool):
             key = (service["address"], service["protocol"], service["port"])
             if key in seen_svc:
                 continue
@@ -601,6 +750,8 @@ def export_pack(
 
     assets = _build_assets(hosts=hosts, services=services, adapter=adapter)
     findings = _build_findings(services, adapter=adapter)
+    findings.extend(_misconfig_findings(shard_dirs, services, adapter=adapter))
+    assets.extend(_assets_from_ingested_findings(assets, findings, adapter=adapter))
     run_id = _run_id(plan, prove)
     stamp = created_at or _utc_now()
     deepen = plan.get("deepen") if isinstance(plan.get("deepen"), dict) else {}
@@ -644,11 +795,207 @@ def export_pack(
     _write_jsonl(pack / "assets.jsonl", assets)
     _write_jsonl(pack / "findings.jsonl", findings)
     (pack / "README_EXPORT.md").write_text(_readme(adapter=adapter, run_id=run_id), encoding="utf-8")
-    return {
+    extra: dict[str, Any] = {}
+    if wanted in {"all", "ciso"}:
+        extra["ciso"] = write_ciso(
+            pack / "ciso-assistant",
+            assets=assets,
+            findings=findings,
+            evidence=evidence,
+        )
+    if wanted in {"all", "opengrc"}:
+        extra["opengrc"] = write_opengrc(
+            pack / "opengrc", assets=assets, findings=findings
+        )
+    if wanted in {"all", "probo"}:
+        extra["probo"] = write_probo(pack / "probo", findings=findings)
+    if wanted not in {"pack_drop", "all", "ciso", "opengrc", "probo"}:
+        raise ExportError(f"unknown export target {target!r}")
+    result = {
         "ok": True,
         "pack": str(pack),
         "run_id": run_id,
         "assets": len(assets),
         "findings": len(findings),
         "meta": meta,
+        "target": wanted,
+        "http": False,
     }
+    result.update(extra)
+    if live:
+        if wanted == "opengrc":
+            refuse_opengrc_live()
+        if wanted in {"ciso", "all"}:
+            require_ciso_gate(cwd=cwd)
+        if wanted in {"probo", "all"}:
+            require_probo_gate(cwd=cwd)
+        if wanted in {"ciso", "all"}:
+            ciso_info = extra.get("ciso") or {}
+            push = push_ciso_assets_evidences(
+                assets=list(ciso_info.get("asset_rows") or []),
+                evidences=list(ciso_info.get("evidence_rows") or []),
+                cwd=cwd,
+            )
+            result["http"] = bool(push.get("http"))
+            result["ciso_asset_ids"] = [str(item) for item in (push.get("asset_ids") or [])]
+            if os.environ.get("CISO_FINDINGS_ASSESSMENT", "").strip():
+                name_to_id: dict[str, str] = {}
+                fallback: dict[str, str] = {}
+                posted_assets = [
+                    row
+                    for row in list(push.get("posted_assets") or [])
+                    if isinstance(row, dict)
+                    and str(row.get("name") or "").strip()
+                    and str(row.get("id") or "").strip()
+                ]
+                pairs = posted_assets or [
+                    {"name": row.get("name"), "id": aid, "type": row.get("type")}
+                    for row, aid in zip(
+                        list(ciso_info.get("asset_rows") or []),
+                        list(push.get("asset_ids") or []),
+                    )
+                ]
+                for row in pairs:
+                    name = str(row.get("name") or "").strip()
+                    aid = str(row.get("id") or "").strip()
+                    if not (name and aid):
+                        continue
+                    if str(row.get("type") or "") == "PR":
+                        name_to_id[name] = aid
+                    else:
+                        fallback.setdefault(name, aid)
+                for name, aid in fallback.items():
+                    name_to_id.setdefault(name, aid)
+                evidence_ids = [
+                    str(item)
+                    for item in (push.get("evidence_ids") or [])
+                    if str(item).strip()
+                ]
+                wired = []
+                for row in list(ciso_info.get("finding_rows") or []):
+                    item = dict(row)
+                    addr = str(item.get("address") or "").strip()
+                    if addr and addr in name_to_id:
+                        item["asset"] = name_to_id[addr]
+                    if evidence_ids:
+                        item["evidences"] = list(evidence_ids)
+                    wired.append(item)
+                findings_push = push_ciso_findings(
+                    findings=wired,
+                    cwd=cwd,
+                )
+                result["http"] = result["http"] or bool(findings_push.get("http"))
+                result["ciso_findings_posted"] = findings_push.get("posted")
+                ids = [str(item) for item in (findings_push.get("finding_ids") or [])]
+                result["ciso_finding_ids"] = ids
+                named = [
+                    row
+                    for row in wired
+                    if str(row.get("name") or row.get("title") or "").strip()
+                ]
+                posted_rows = [
+                    row
+                    for row in list(findings_push.get("posted_rows") or [])
+                    if isinstance(row, dict) and str(row.get("id") or "").strip()
+                ]
+                pairs: list[tuple[str, dict[str, Any]]] = []
+                if posted_rows:
+                    for row in posted_rows:
+                        pairs.append((str(row.get("id") or "").strip(), row))
+                else:
+                    for index, fid in enumerate(ids):
+                        expected_row = named[index] if index < len(named) else {}
+                        pairs.append((fid, expected_row))
+                read_back: list[str] = []
+                read_back_assets: list[str] = []
+                read_back_evidences: list[str] = []
+                for fid, expected_row in pairs:
+                    body = fetch_ciso_finding(fid, cwd=cwd)
+                    expected = str(expected_row.get("asset") or "").strip()
+                    got = ciso_finding_asset_id(body)
+                    if expected and ciso_finding_asset_id({"asset": expected}) and got != expected:
+                        raise GateError(
+                            "CISO finding read-back failed: GET asset id missing or mismatched. No claim."
+                        )
+                    expected_ev: list[str] = []
+                    raw_ev = expected_row.get("evidences") or []
+                    if isinstance(raw_ev, str):
+                        raw_ev = [raw_ev]
+                    for item in raw_ev:
+                        text = str(item or "").strip()
+                        if text and ciso_finding_evidence_ids({"evidences": [text]}):
+                            expected_ev.append(text)
+                    got_ev = ciso_finding_evidence_ids(body)
+                    if expected_ev and set(expected_ev) - set(got_ev):
+                        raise GateError(
+                            "CISO finding read-back failed: GET evidences missing or mismatched. No claim."
+                        )
+                    expected_rec = ""
+                    if posted_rows:
+                        expected_rec = str(
+                            expected_row.get("recommendation") or ""
+                        ).strip()
+                    got_rec = str(body.get("recommendation") or "").strip()
+                    if expected_rec and got_rec != expected_rec:
+                        raise GateError(
+                            "CISO finding read-back failed: GET recommendation missing or mismatched. No claim."
+                        )
+                    expected_obs = ""
+                    if posted_rows:
+                        expected_obs = str(
+                            expected_row.get("observation") or ""
+                        ).strip()
+                    got_obs = str(body.get("observation") or "").strip()
+                    if expected_obs and got_obs != expected_obs:
+                        raise GateError(
+                            "CISO finding read-back failed: GET observation missing or mismatched. No claim."
+                        )
+                    read_back.append(str(body.get("id") or fid))
+                    if got:
+                        read_back_assets.append(got)
+                    for eid in ciso_finding_evidence_ids(body):
+                        if eid not in read_back_evidences:
+                            read_back_evidences.append(eid)
+                result["ciso_findings_read_back"] = read_back
+                result["ciso_findings_read_back_assets"] = read_back_assets
+                result["ciso_findings_read_back_evidences"] = read_back_evidences
+        if wanted in {"probo", "all"}:
+            probo_info = extra.get("probo") or {}
+            probo_push = push_probo_findings(
+                findings=list(probo_info.get("items") or []),
+                cwd=cwd,
+            )
+            result["http"] = bool(result.get("http")) or bool(probo_push.get("http"))
+            result["probo_posted"] = probo_push.get("posted")
+            ids = [
+                str(item)
+                for item in (probo_push.get("finding_ids") or [])
+                if str(item).strip()
+            ]
+            result["probo_finding_ids"] = ids
+            posted_rows = [
+                row
+                for row in list(probo_push.get("posted_rows") or [])
+                if isinstance(row, dict) and str(row.get("id") or "").strip()
+            ]
+            pairs: list[tuple[str, dict[str, Any]]] = []
+            if posted_rows:
+                for row in posted_rows:
+                    pairs.append((str(row.get("id") or "").strip(), row))
+            else:
+                for fid in ids:
+                    pairs.append((fid, {}))
+            read_back: list[str] = []
+            for fid, expected_row in pairs:
+                body = fetch_probo_finding(fid, cwd=cwd)
+                expected_desc = ""
+                if posted_rows:
+                    expected_desc = str(expected_row.get("description") or "").strip()
+                got_desc = str(body.get("description") or "").strip()
+                if expected_desc and got_desc != expected_desc:
+                    raise GateError(
+                        "Probo finding read-back failed: description missing or mismatched. No claim."
+                    )
+                read_back.append(str(body.get("id") or fid))
+            result["probo_findings_read_back"] = read_back
+    return result

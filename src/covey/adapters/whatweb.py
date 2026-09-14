@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from ipaddress import IPv4Address
 from pathlib import Path
 
 from covey.adapters.common import (
@@ -16,12 +17,21 @@ from covey.adapters.common import (
 )
 from covey.errors import AdapterError
 
-# Brief log: "http://10.9.8.7 [200 OK]" / "http://127.0.0.1:18080 [200 OK] ..."
+# Brief log: "http://10.9.8.7 [200 OK]" / "http://honeypot:8081 [200 OK] ..."
 # Leading URL host is the live signal. Plugin/banner IPs are ignored.
 _URL_HOST = re.compile(
-    r"^(https?)://(\d{1,3}(?:\.\d{1,3}){3})(?::(\d+))?\b",
+    r"^(https?)://([A-Za-z0-9._-]+)(?::(\d+))?\b",
     re.IGNORECASE,
 )
+
+
+def _skip_whatweb_host(host: str) -> bool:
+    """Drop 0.0.0.0-class IPs. Hostnames from URL targets are live."""
+    try:
+        IPv4Address(host)
+    except ValueError:
+        return not host
+    return is_skipped_ip(host)
 
 
 def parse_whatweb_live_hosts(text: str) -> list[str]:
@@ -32,11 +42,11 @@ def parse_whatweb_live_hosts(text: str) -> list[str]:
         match = _URL_HOST.match(line.strip())
         if not match:
             continue
-        ip = match.group(2)
-        if ip in seen or is_skipped_ip(ip):
+        host = match.group(2)
+        if host in seen or _skip_whatweb_host(host):
             continue
-        seen.add(ip)
-        hosts.append(ip)
+        seen.add(host)
+        hosts.append(host)
     return hosts
 
 
@@ -48,11 +58,11 @@ def parse_whatweb_services(text: str) -> list[dict[str, str]]:
         if not match:
             continue
         scheme = match.group(1).lower()
-        ip = match.group(2)
-        if is_skipped_ip(ip):
+        host = match.group(2)
+        if _skip_whatweb_host(host):
             continue
         port = match.group(3) or ("443" if scheme == "https" else "80")
-        services.append(open_port_row(ip, port, service=scheme))
+        services.append(open_port_row(host, port, service=scheme))
     return unique_services(services)
 
 
