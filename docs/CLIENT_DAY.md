@@ -79,6 +79,8 @@ capabilities Covey will not vendor:
 
 `export` / `assess --target all` writes `out/pack_drop/`.
 
+Pack ingest expects `schema: covey.pack_drop.v1` and meta `source: evergreen-covey`.
+
 **surface map ≠ honeypot validated ≠ control operating effectiveness.**
 
 | This drop is | This drop is not |
