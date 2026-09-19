@@ -20,7 +20,12 @@ from covey.adapters.nmap import (
     parse_nmap_xml_meta,
     parse_nmap_xml_services,
 )
-from covey.adapters.registry import adapter_for
+from covey.adapters.registry import (
+    E2E_PROVEN_ADAPTERS,
+    LIVE_ADAPTER_IDS,
+    UNPROVEN_ADAPTERS,
+    adapter_for,
+)
 from covey.errors import ExportError, GateError
 from covey.findings import (
     findings_from_file_drop,
@@ -196,17 +201,10 @@ def _shard_tool(directory: Path, fallback: str) -> str:
         except json.JSONDecodeError:
             loaded = None
         if isinstance(loaded, list) and loaded:
-            name = Path(str(loaded[0])).name.lower()
-            for tool in (
-                "httpx",
-                "sslscan",
-                "tlsx",
-                "whatweb",
-                "nmap",
-                "naabu",
-                "rustscan",
-            ):
-                if tool in name:
+            name = Path(str(loaded[0])).name.lower().replace("_", "-")
+            compact = name.replace("-", "")
+            for tool in sorted(LIVE_ADAPTER_IDS, key=len, reverse=True):
+                if tool in name or tool.replace("-", "") in compact:
                     return tool
     if (directory / "scan.xml").is_file() and _looks_like_nmap_xml(directory / "scan.xml"):
         return "nmap"
@@ -670,7 +668,7 @@ from this pack alone.
 | --- | --- |
 | `meta.json` | run envelope: signer/purpose (no secrets), versions, honesty flags |
 | `assets.jsonl` | one host or service asset per line |
-| `findings.jsonl` | `claim=open_port_observed` only when evidence shows an open port |
+| `findings.jsonl` | `open_port_observed` when evidence shows open; `misconfig_observed` when httpx/sslscan/whatweb/nmap evidence supports it; `vuln_ingested` only from OpenVAS/Nessus **file_drop** CVE pairing — never invented |
 | `evidence/` | small copies (or pointers) of shard `scan.xml` / `scan.gnmap` / `scan.json` |
 | `in/nmap/` | mirror-friendly ingest folder for nmap-family artifacts |
 | `README_EXPORT.md` | this file |
@@ -724,6 +722,8 @@ def export_pack(
         )
 
     adapter = str(plan.get("adapter") or "nmap")
+    e2e_proven = adapter in E2E_PROVEN_ADAPTERS
+    unproven = adapter in UNPROVEN_ADAPTERS
     hosts: list[str] = []
     seen_hosts: set[str] = set()
     for item in report.get("pass1") or []:
@@ -771,6 +771,8 @@ def export_pack(
         },
         "deepen": deepen,
         "honesty": HONESTY,
+        "e2e_proven": e2e_proven,
+        "unproven": unproven,
         "ingest": {
             "mode": "file_drop",
             "riskready_post": False,

@@ -46,6 +46,25 @@ This is orchestration. The scanner stays yours.
 OpenVAS-class tools, if added later, are **file_drop only**. Covey will not
 spawn them.
 
+## Client-day (authorized SCOPE)
+
+Loopback `prove` is the farm lab. A client engagement is a **signed** SCOPE
+(`demo: false` + `COVEY_SCOPE_HMAC_KEY`) and **BYO** binaries on the
+engagement host. Operator path: [docs/CLIENT_DAY.md](docs/CLIENT_DAY.md).
+
+```bash
+export COVEY_SCOPE_HMAC_KEY=...          # off git; not the demo key
+# copy examples/scope.client.example.yaml, fill authorized ranges, then:
+python -m covey sign --scope scope.client.yaml
+python -m covey ready --scope scope.client.yaml
+python -m covey assess --scope scope.client.yaml --out out --target all
+```
+
+`ready` and `assess` never apt-install. Missing BYO fails closed.
+`prove --adapter masscan` (or arp-scan / netdiscover / zmap) stays
+**argv+unit only** — do not claim them live. Those four need a DESKTOP/host
+L2 or raw-SYN path; Covey does not invent a TAP/veth brick.
+
 ## Quick prove
 
 On Debian/Ubuntu, `make prove` may apt-install a missing BYO binary **on this
@@ -229,12 +248,19 @@ python -m covey export --out out --target ciso
 python -m covey export --out out --target opengrc
 python -m covey export --out out --target probo
 # --target riskready → WRAP_DEAD exit 2, no HTTP
+python -m covey ready --scope examples/scope.lab.yaml --plan-only
+python -m covey assess --scope scope.client.yaml --out out --target all
 # or
 make export
+make ready SCOPE=scope.client.yaml
 ```
 
 `plan` writes worker JSON (shard id, target, stage, argv / argv template)
 and does **not** invoke a scanner.
+
+`ready` loads a signed SCOPE, resolves BYO binaries, and prints
+DESKTOP/host needs. It does **not** install or spawn. `assess` is
+ready + run + export for an unattended client-day window.
 
 `export` reads a prove/run `out/` and writes `out/pack_drop/` for the
 assessment MCP / `grc-collector-pack` **file_drop** (assets, open-port
@@ -264,6 +290,7 @@ python -m covey export --out out --target all
 | `covey.plan` | worker plan JSON, no spawn |
 | `covey.runner` | local subprocess or `docker run`; land stdout/stderr/xml |
 | `covey.export` | Seen → SoR-ready `pack_drop/` + optional CISO/OpenGRC/Probo files |
+| `covey.ready` | Client-day preflight: signed SCOPE + BYO resolve; no install, no spawn |
 | `covey.findings` | Header/TLS/service misconfigs; unknown stays UNMAPPED |
 | `covey.adapters` | 20 live BYO argv+parse adapters + OpenVAS file_drop stub |
 

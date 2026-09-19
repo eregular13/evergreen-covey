@@ -1,0 +1,27 @@
+# UNSIGNED client-day template. Not a signed SCOPE. Not the loopback prove.
+# Copy, replace every REPLACE- field and the CIDR with authorized ranges,
+# export COVEY_SCOPE_HMAC_KEY, then:
+#   python -m covey sign --scope scope.client.yaml
+#   python -m covey ready --scope scope.client.yaml
+# demo: false — production HMAC only. Lab documents stay examples/scope.lab*.yaml
+# Do not claim masscan/arp-scan/netdiscover/zmap live (argv+unit only).
+version: 1
+demo: false
+consent:
+  signed: true
+  signer: REPLACE-CLIENT-SIGNER
+  purpose: REPLACE-AUTHORIZED-PURPOSE
+window:
+  start: "2026-09-19T00:00:00Z"
+  end: "2026-09-26T23:59:59Z"
+adapter: nmap
+max_workers: 2
+max_shards: 64
+allow_wide: false
+tile:
+  default_prefix: 24
+  small_prefix: 28
+pass2:
+  ports: "22,80,443"
+targets:
+  - cidr: 10.42.0.0/28

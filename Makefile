@@ -1,4 +1,4 @@
-.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan prove-svmap prove-unicornscan test unit venv export clean
+.PHONY: prove prove-rustscan prove-fping prove-naabu prove-nping prove-httpx prove-sslscan prove-tlsx prove-whatweb prove-hping3 prove-onesixtyone prove-nbtscan prove-braa prove-ike-scan prove-svmap prove-unicornscan test unit venv export ready clean
 
 VENV ?= .venv
 PY := $(VENV)/bin/python
@@ -24,6 +24,12 @@ test: venv
 # Pack export from an existing prove/run out/ (no scanner spawn).
 export: venv
 	$(PY) -m covey export --out out
+
+# Client-day preflight. Never installs. Never spawns.
+#   make ready SCOPE=path/to/signed.yaml
+ready: venv
+	@test -n "$(SCOPE)" || (echo "covey ready: set SCOPE=path/to/signed.yaml"; exit 2)
+	$(PY) -m covey ready --scope $(SCOPE)
 
 # Full prove: BYO nmap (install on this VM if needed), shard the loopback
 # lab, run pass1+pass2 through the Covey runner, export pack_drop, then tests.

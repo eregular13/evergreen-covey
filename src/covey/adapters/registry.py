@@ -79,6 +79,146 @@ UNPROVEN_ADAPTERS: tuple[str, ...] = tuple(
     name for name in LIVE_ADAPTER_IDS if name not in E2E_PROVEN_ADAPTERS
 )
 
+# Honest DESKTOP/host BYO needs. Source of truth for `covey ready` and
+# docs/CLIENT_DAY.md. desktop_or_host=True means the engagement host must
+# supply a capability this farm cannot fake (L2, raw SYN, CAP_NET_RAW,
+# privileged UDP, or a specific iface). Not a live-e2e claim.
+ADAPTER_HOST_NEEDS: dict[str, dict[str, object]] = {
+    "nmap": {
+        "desktop_or_host": False,
+        "reason": "ICMP/TCP discover; loopback e2e-proven",
+        "needs": ("BYO nmap on PATH, COVEY_NMAP, or docker://",),
+    },
+    "rustscan": {
+        "desktop_or_host": False,
+        "reason": "TCP connect; loopback e2e-proven",
+        "needs": ("BYO rustscan on PATH or COVEY_RUSTSCAN",),
+    },
+    "fping": {
+        "desktop_or_host": False,
+        "reason": "ICMP host discovery; loopback e2e-proven",
+        "needs": ("BYO fping on PATH or COVEY_FPING",),
+    },
+    "naabu": {
+        "desktop_or_host": False,
+        "reason": "TCP connect; loopback e2e-proven",
+        "needs": ("BYO naabu on PATH or COVEY_NAABU",),
+    },
+    "nping": {
+        "desktop_or_host": False,
+        "reason": "unprivileged --tcp-connect; loopback e2e-proven",
+        "needs": ("BYO nping (nmap package) on PATH or COVEY_NPING",),
+    },
+    "httpx": {
+        "desktop_or_host": False,
+        "reason": "HTTP probe; target must speak HTTP",
+        "needs": ("BYO httpx on PATH or COVEY_HTTPX", "HTTP service on SCOPE ports"),
+    },
+    "sslscan": {
+        "desktop_or_host": False,
+        "reason": "TLS probe; target must speak TLS",
+        "needs": ("BYO sslscan on PATH or COVEY_SSLSCAN", "TLS service on SCOPE ports"),
+    },
+    "tlsx": {
+        "desktop_or_host": False,
+        "reason": "TLS probe; target must speak TLS",
+        "needs": ("BYO tlsx on PATH or COVEY_TLSX", "TLS service on SCOPE ports"),
+    },
+    "whatweb": {
+        "desktop_or_host": False,
+        "reason": "HTTP fingerprint; target must speak HTTP",
+        "needs": ("BYO whatweb on PATH or COVEY_WHATWEB", "HTTP service on SCOPE ports"),
+    },
+    "hping3": {
+        "desktop_or_host": True,
+        "reason": "raw --icmp/--syn need CAP_NET_RAW (or root)",
+        "needs": ("BYO hping3 on PATH or COVEY_HPING3", "CAP_NET_RAW or root"),
+    },
+    "onesixtyone": {
+        "desktop_or_host": False,
+        "reason": "SNMP community sweep; target must speak SNMPv1",
+        "needs": (
+            "BYO onesixtyone on PATH or COVEY_ONESIXTYONE",
+            "SNMP on SCOPE port (default 161)",
+        ),
+    },
+    "nbtscan": {
+        "desktop_or_host": True,
+        "reason": "NetBIOS/137 is often a privileged UDP port on the host",
+        "needs": (
+            "BYO nbtscan on PATH or COVEY_NBTSCAN",
+            "ability to send/receive NetBIOS UDP/137",
+        ),
+    },
+    "braa": {
+        "desktop_or_host": False,
+        "reason": "SNMP GET sweep; target must speak SNMPv1",
+        "needs": (
+            "BYO braa on PATH or COVEY_BRAA",
+            "SNMP on SCOPE port (default 161)",
+        ),
+    },
+    "ike-scan": {
+        "desktop_or_host": False,
+        "reason": "IKE handshake; target must speak ISAKMP",
+        "needs": (
+            "BYO ike-scan on PATH or COVEY_IKE_SCAN",
+            "IKE on SCOPE port (default 500)",
+        ),
+    },
+    "svmap": {
+        "desktop_or_host": False,
+        "reason": "SIP OPTIONS; target must speak SIP",
+        "needs": (
+            "BYO svmap/sipvicious on PATH or COVEY_SVMAP",
+            "SIP on SCOPE port (default 5060)",
+        ),
+    },
+    "unicornscan": {
+        "desktop_or_host": True,
+        "reason": "needs the correct iface; same-UID /tmp collision; modules.conf 0640",
+        "needs": (
+            "BYO unicornscan on PATH or COVEY_UNICORNSCAN",
+            "non-loopback iface, or -i lo plus a 127/8 source outside the tile",
+            "max_workers: 1 on the engagement host",
+        ),
+    },
+    "masscan": {
+        "desktop_or_host": True,
+        "reason": "raw SYN/pcap; loopback finds 0; argv+unit only",
+        "needs": (
+            "BYO masscan on PATH or COVEY_MASSCAN",
+            "non-loopback tile",
+            "CAP_NET_RAW or root + libpcap",
+        ),
+    },
+    "zmap": {
+        "desktop_or_host": True,
+        "reason": "raw SYN/pcap; loopback finds 0; argv+unit only",
+        "needs": (
+            "BYO zmap on PATH or COVEY_ZMAP",
+            "non-loopback tile",
+            "CAP_NET_RAW or root + pcap",
+        ),
+    },
+    "arp-scan": {
+        "desktop_or_host": True,
+        "reason": "Ethernet L2; loopback has no MAC; argv+unit only",
+        "needs": (
+            "BYO arp-scan on PATH or COVEY_ARP_SCAN",
+            "Ethernet interface (not lo)",
+        ),
+    },
+    "netdiscover": {
+        "desktop_or_host": True,
+        "reason": "Ethernet L2; loopback is not Ethernet; argv+unit only",
+        "needs": (
+            "BYO netdiscover on PATH or COVEY_NETDISCOVER",
+            "Ethernet interface (not lo)",
+        ),
+    },
+}
+
 _FACTORIES: dict[str, type] = {
     "nmap": NmapAdapter,
     "masscan": MasscanAdapter,
@@ -175,3 +315,22 @@ def file_drop_adapter(name: str = "openvas") -> OpenVASFileDrop:
 
 def list_live_adapters() -> tuple[str, ...]:
     return LIVE_ADAPTER_IDS
+
+
+def host_need(name: str) -> dict[str, object]:
+    """Return DESKTOP/host BYO needs for a live adapter id."""
+    key = normalize_adapter_name(name)
+    key = _ALIASES.get(key, key)
+    need = ADAPTER_HOST_NEEDS.get(key)
+    if need is None:
+        raise AdapterError(f"unknown adapter {name!r}")
+    return dict(need)
+
+
+def desktop_or_host_adapters() -> tuple[str, ...]:
+    """Adapters that still need a DESKTOP/host capability beyond PATH."""
+    return tuple(
+        name
+        for name in LIVE_ADAPTER_IDS
+        if ADAPTER_HOST_NEEDS[name]["desktop_or_host"]
+    )

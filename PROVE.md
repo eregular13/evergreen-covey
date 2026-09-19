@@ -1,5 +1,10 @@
 # Evergreen Covey — prove honesty
 
+Loopback lab only. A client engagement is a signed SCOPE on the operator
+host — see [docs/CLIENT_DAY.md](docs/CLIENT_DAY.md). `E2E_PROVEN_ADAPTERS`
+is the source of truth. The remaining adapters stay **argv+unit only**.
+Do not claim them live.
+
 Covey has **20** live adapter ids (argv + unit parse). Only **sixteen** have
 been run end-to-end through the runner with a real operator-provided
 binary against a signed loopback lab.

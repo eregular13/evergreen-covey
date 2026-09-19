@@ -2,6 +2,7 @@ from covey.adapters.base import Adapter, materialize_template
 from covey.adapters.nmap import NmapAdapter, get_adapter
 from covey.adapters.openvas import OpenVASFileDrop
 from covey.adapters.registry import (
+    ADAPTER_HOST_NEEDS,
     BINARY_ALIASES,
     E2E_PROVEN_ADAPTERS,
     FILE_DROP_IDS,
@@ -9,12 +10,15 @@ from covey.adapters.registry import (
     LIVE_ADAPTER_IDS,
     UNPROVEN_ADAPTERS,
     adapter_for,
+    desktop_or_host_adapters,
     file_drop_adapter,
+    host_need,
     list_live_adapters,
     tool_env_var,
 )
 
 __all__ = [
+    "ADAPTER_HOST_NEEDS",
     "Adapter",
     "BINARY_ALIASES",
     "E2E_PROVEN_ADAPTERS",
@@ -25,8 +29,10 @@ __all__ = [
     "NmapAdapter",
     "OpenVASFileDrop",
     "adapter_for",
+    "desktop_or_host_adapters",
     "file_drop_adapter",
     "get_adapter",
+    "host_need",
     "list_live_adapters",
     "materialize_template",
     "tool_env_var",

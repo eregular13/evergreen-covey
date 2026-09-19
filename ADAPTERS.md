@@ -12,7 +12,11 @@ Covey is orchestration only. Operators bring binaries (`PATH`, `COVEY_<TOOL>`,
 (sixteenth).** The
 other 4 ids are argv+unit only. Source of
 truth: `E2E_PROVEN_ADAPTERS` in `src/covey/adapters/registry.py`. See
-[PROVE.md](PROVE.md). Do not claim them live.
+[PROVE.md](PROVE.md) and [docs/CLIENT_DAY.md](docs/CLIENT_DAY.md).
+Do not claim them live. `ADAPTER_HOST_NEEDS` lists DESKTOP/host BYO
+(raw SYN, Ethernet L2, `CAP_NET_RAW`, privileged UDP/137, unicornscan
+iface). `python -m covey ready --scope SCOPE.yaml` prints that table
+without spawning.
 
 The prove VM may install nmap (apt; also ships nping), rustscan (GitHub
 release / cargo), fping (apt), naabu (GitHub release / go), httpx
