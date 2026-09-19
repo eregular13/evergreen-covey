@@ -94,4 +94,5 @@ def test_cli_lists_ready_and_assess():
     text = build_parser().format_help()
     assert "ready" in text
     assert "assess" in text
+    assert "client-day-dry" in text
     assert "client-day" in text.lower() or "preflight" in text.lower()

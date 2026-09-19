@@ -1,4 +1,4 @@
-"""CLI: python -m covey plan|run|prove|export|sign|ready|assess."""
+"""CLI: python -m covey plan|run|prove|export|sign|ready|assess|client-day-dry."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 
 from covey import __version__
 from covey.errors import CoveyError, ExportError, GateError
+from covey.client_day_dry import format_dry, run_dry
 from covey.export import export_pack
 from covey.plan import build_plan
 from covey.prove import run_prove
@@ -103,6 +104,18 @@ def _cmd_assess(args: argparse.Namespace) -> int:
     if rc != 0:
         return rc
     return _cmd_export(args)
+
+
+def _cmd_client_day_dry(args: argparse.Namespace) -> int:
+    """SAMPLE client-day rails. Never install. Never spawn. Lab HMAC only."""
+    summary = run_dry(
+        work=Path(args.work) if args.work else None,
+        scope_src=Path(args.scope) if args.scope else None,
+        export_from=Path(args.export_from) if args.export_from else None,
+        no_export=bool(args.no_export),
+    )
+    print(format_dry(summary), end="")
+    return 0 if summary["ok"] else 1
 
 
 def _cmd_sign(args: argparse.Namespace) -> int:
@@ -219,6 +232,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="dual-gate live push after export. Default dry-run files only.",
     )
     assess.set_defaults(func=_cmd_assess)
+
+    dry = sub.add_parser(
+        "client-day-dry",
+        help="SAMPLE DESKTOP/host dry: sign (lab HMAC) → ready --strict-e2e → plan (no spawn)",
+    )
+    dry.add_argument(
+        "--scope",
+        default=None,
+        help="unsigned SCOPE template (default examples/scope.client.example.yaml)",
+    )
+    dry.add_argument(
+        "--work",
+        default=None,
+        help="work dir (default out/client_day_dry)",
+    )
+    dry.add_argument(
+        "--export-from",
+        default=None,
+        dest="export_from",
+        help="existing prove/run out/ to export; default seeds SAMPLE fixtures",
+    )
+    dry.add_argument(
+        "--no-export",
+        action="store_true",
+        help="skip pack_drop (still sign / ready --strict-e2e / plan)",
+    )
+    dry.set_defaults(func=_cmd_client_day_dry)
 
     return parser
 

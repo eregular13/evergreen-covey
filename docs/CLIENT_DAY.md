@@ -10,6 +10,31 @@ The other 4 (`masscan`, `arp-scan`, `netdiscover`, `zmap`) stay
 **argv+unit only**. Do not claim them live. `python -m covey prove --adapter
 masscan` (or any of the 4) **fails closed**.
 
+## One-command SAMPLE dry (DESKTOP / client host)
+
+Same shape as pack `sample_to_sor`: one script, no live client scan.
+
+```bash
+./scripts/client_day_dry.sh
+# DESKTOP: .\scripts\client_day_dry.ps1
+# or: make client-day-dry
+# or: python -m covey client-day-dry
+```
+
+Uses [`examples/scope.client.example.yaml`](../examples/scope.client.example.yaml)
+(copied into `out/client_day_dry/`; the committed template is not mutated):
+
+1. **sign** with the well-known **demo/lab HMAC only** (`demo: true`). Production
+   `COVEY_SCOPE_HMAC_KEY` is unset for this SAMPLE.
+2. **ready --strict-e2e** — refuse the unproven four. Never install. Never spawn.
+3. **plan** — worker JSON only. No scanner subprocess.
+4. **export / pack_drop** from committed SAMPLE fixtures when a full `assess`
+   would need BYO binaries. Missing BYO prints a clear miss list and fails
+   closed (no `apt-get`, no GitHub release).
+
+Prints `elapsed` and the `out/…/pack_drop` path when export is possible.
+**SAMPLE ≠ client.** This is not a paying-day PASS and not a live estate.
+
 ## Operator sequence
 
 1. Copy [`examples/scope.client.example.yaml`](../examples/scope.client.example.yaml).
