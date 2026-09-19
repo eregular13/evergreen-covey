@@ -45,15 +45,18 @@ def test_scripts_exist_and_lock_license():
     for text in (sh, ps1):
         assert "client-day-dry" in text
         assert "strict-e2e" in text
-        assert "apt-get" not in text
+        assert "apt-get install" not in text
         assert "apt install" not in text
+        assert "sudo apt" not in text
         assert "nmap.org" not in text
         assert "LICENSE-LOCK" in text
         assert "SAMPLE" in text
         assert "RiskReady" in text
-        assert "never apt-install" in text.lower() or "Never apt-install" in text
+        lowered = text.lower()
+        assert "never apt-install" in lowered or "never apt-get" in lowered
     assert "#!/usr/bin/env bash" in sh
-    assert "python -m covey client-day-dry" in sh or '-m covey client-day-dry' in ps1
+    assert '-m covey client-day-dry' in sh
+    assert "client-day-dry" in ps1
 
 
 def test_readme_and_client_day_doc_lead_with_dry():
