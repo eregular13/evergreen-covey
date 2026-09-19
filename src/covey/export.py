@@ -54,7 +54,9 @@ from covey.grc import (
 )
 
 PACK_DIR_NAME = "pack_drop"
-SCHEMA_ID = "evergreen.pack_drop.v1"
+# Canonical write schema. Collector ingest still accepts evergreen.pack_drop.v1.
+SCHEMA_ID = "covey.pack_drop.v1"
+PACK_SOURCE = "evergreen-covey"
 HONESTY_LINE = (
     "surface map ≠ honeypot validated ≠ control operating effectiveness"
 )
@@ -107,6 +109,27 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
         "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows),
         encoding="utf-8",
     )
+
+
+def _stamp_pack_schema(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Canonical row schema beside adapter. Do not rewrite provenance source."""
+    for row in rows:
+        row["schema"] = SCHEMA_ID
+    return rows
+
+
+def _demo_flag(*blobs: dict[str, Any]) -> bool:
+    """True for lab/demo. False only when SCOPE/plan is explicitly non-demo."""
+    for blob in blobs:
+        if not isinstance(blob, dict) or "demo" not in blob:
+            continue
+        value = blob.get("demo")
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
+    return True
 
 
 def _sha256(path: Path) -> str:
@@ -748,13 +771,22 @@ def export_pack(
             seen_svc.add(key)
             services.append(service)
 
-    assets = _build_assets(hosts=hosts, services=services, adapter=adapter)
-    findings = _build_findings(services, adapter=adapter)
-    findings.extend(_misconfig_findings(shard_dirs, services, adapter=adapter))
-    assets.extend(_assets_from_ingested_findings(assets, findings, adapter=adapter))
+    assets = _stamp_pack_schema(
+        _build_assets(hosts=hosts, services=services, adapter=adapter)
+    )
+    findings = _stamp_pack_schema(_build_findings(services, adapter=adapter))
+    findings.extend(
+        _stamp_pack_schema(_misconfig_findings(shard_dirs, services, adapter=adapter))
+    )
+    assets.extend(
+        _stamp_pack_schema(
+            _assets_from_ingested_findings(assets, findings, adapter=adapter)
+        )
+    )
     run_id = _run_id(plan, prove)
     stamp = created_at or _utc_now()
     deepen = plan.get("deepen") if isinstance(plan.get("deepen"), dict) else {}
+    demo = _demo_flag(plan, prove)
 
     pack.mkdir(parents=True, exist_ok=True)
     evidence = _collect_evidence(
@@ -763,8 +795,10 @@ def export_pack(
 
     meta = {
         "schema": SCHEMA_ID,
+        "source": PACK_SOURCE,
         "run_id": run_id,
         "adapter": adapter,
+        "demo": demo,
         "scope": {
             "signer": plan.get("signer") or "",
             "purpose": plan.get("purpose") or "",

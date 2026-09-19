@@ -40,6 +40,7 @@ class Plan:
     )
     signer: str = ""
     purpose: str = ""
+    demo: bool = True
     deepen_ports: str | None = None
     deepen_host_timeout: str | None = None
     pipeline: list[str] = field(default_factory=list)
@@ -68,6 +69,7 @@ class Plan:
             "created_at": self.created_at,
             "signer": self.signer,
             "purpose": self.purpose,
+            "demo": bool(self.demo),
             "deepen": {
                 k: v
                 for k, v in {
@@ -141,6 +143,7 @@ def _ingest_plan(scope: Scope) -> Plan:
         workers=workers,
         signer=scope.signer,
         purpose=scope.purpose,
+        demo=scope.demo,
         deepen_ports=scope.deepen.ports,
         deepen_host_timeout=scope.deepen.host_timeout,
     )
@@ -217,6 +220,7 @@ def build_plan(
         workers=workers,
         signer=scope.signer,
         purpose=scope.purpose,
+        demo=scope.demo,
         deepen_ports=scope.deepen.ports,
         deepen_host_timeout=scope.deepen.host_timeout,
     )

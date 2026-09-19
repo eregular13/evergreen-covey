@@ -5,13 +5,15 @@ import pytest
 from covey.adapters.registry import LIVE_ADAPTER_IDS
 from covey.errors import AdapterError, ShardError
 from covey.plan import adapter_for, build_plan
-from covey.scope import load
+from covey.scope import HMAC_ENV, load
 from tests.helpers import signed_scope_dict
 
 
 def test_plan_has_pass1_argv_and_pass2_template():
     scope = load(signed_scope_dict(targets=[{"cidr": "10.42.0.0/30"}]))
     plan = build_plan(scope, out_root="out")
+    assert plan.demo is True
+    assert plan.to_dict()["demo"] is True
     assert plan.shards == ["10.42.0.0/30"]
     assert len(plan.pass1_workers) == 1
     assert len(plan.pass2_workers) == 1
@@ -25,6 +27,15 @@ def test_plan_has_pass1_argv_and_pass2_template():
     assert p2.argv_template is not None
     assert "-sV" in p2.argv_template
     assert "{hosts}" in p2.argv_template
+
+
+def test_plan_persists_client_demo_false(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(HMAC_ENV, "client-day-unit-test-key")
+    scope = load(signed_scope_dict(demo=False, targets=[{"cidr": "10.42.0.0/30"}]))
+    plan = build_plan(scope, out_root="out")
+    assert scope.demo is False
+    assert plan.demo is False
+    assert plan.to_dict()["demo"] is False
 
 
 def test_lab_slash28_tiles_to_four_shards():

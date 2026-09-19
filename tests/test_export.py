@@ -9,7 +9,7 @@ import yaml
 from covey.adapters.nmap import parse_gnmap_services, parse_nmap_xml_services
 from covey.adapters.registry import E2E_PROVEN_ADAPTERS, UNPROVEN_ADAPTERS
 from covey.errors import ExportError
-from covey.export import export_pack
+from covey.export import PACK_SOURCE, SCHEMA_ID, export_pack
 from covey.cli import main
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -191,10 +191,16 @@ def test_export_writes_pack_layout(tmp_path: Path):
     assert list((pack / "in" / "nmap").glob("*.xml"))
 
     meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
-    assert meta["schema"] == "evergreen.pack_drop.v1"
+    assert meta["schema"] == "covey.pack_drop.v1"
+    assert meta["schema"] == SCHEMA_ID
+    assert meta["schema"] != "evergreen.pack_drop.v1"
+    assert meta["source"] == "evergreen-covey"
+    assert meta["source"] == PACK_SOURCE
+    assert meta["demo"] is True
     assert meta["adapter"] == "nmap"
     assert meta["e2e_proven"] is True
     assert meta["unproven"] is False
+    assert meta["source_out"] == str(run)
     assert meta["scope"]["signer"] == "prove-lab"
     assert meta["scope"]["purpose"] == "evergreen-covey loopback prove"
     assert "signature" not in meta["scope"]
@@ -224,6 +230,10 @@ def test_export_writes_pack_layout(tmp_path: Path):
     services = [row for row in assets if row["kind"] == "service"]
     assert {row["address"] for row in hosts} >= {"127.0.0.1", "127.0.0.3"}
     assert any(row["port"] == 22 and row["state"] == "open" for row in services)
+    assert all(row["schema"] == "covey.pack_drop.v1" for row in assets)
+    assert all(row["adapter"] == "nmap" for row in assets)
+    assert {row["source"] for row in hosts} == {"parse_live_hosts"}
+    assert all(row["source"] == "pass2" for row in services)
 
     findings = [
         json.loads(line)
@@ -235,6 +245,8 @@ def test_export_writes_pack_layout(tmp_path: Path):
     assert all(row["severity"] == "info" for row in findings)
     assert all("control_failure" in row["not_claimed"] for row in findings)
     assert all(row.get("port") == 22 for row in findings)
+    assert all(row["schema"] == "covey.pack_drop.v1" for row in findings)
+    assert all(row["adapter"] == "nmap" for row in findings)
 
 
 def test_export_rustscan_stdout_writes_hosts_and_services(tmp_path: Path):
@@ -330,6 +342,9 @@ def test_export_normalizes_all_e2e_proven_adapters(tmp_path: Path, adapter: str)
     pack = Path(summary["pack"])
     meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
     assert meta["adapter"] == adapter
+    assert meta["schema"] == "covey.pack_drop.v1"
+    assert meta["source"] == "evergreen-covey"
+    assert meta["demo"] is True
     assert meta["e2e_proven"] is True
     assert meta["unproven"] is False
     assert meta["honesty"]["surface_map"] is True
@@ -338,9 +353,14 @@ def test_export_normalizes_all_e2e_proven_adapters(tmp_path: Path, adapter: str)
     assets = _read_jsonl(pack / "assets.jsonl")
     hosts = [row for row in assets if row["kind"] == "host"]
     assert hosts, f"{adapter} export must write at least one host"
+    assert all(row.get("schema") == "covey.pack_drop.v1" for row in assets)
+    assert all(row.get("adapter") for row in assets)
+    assert all(row.get("source") != "evergreen-covey" for row in assets)
     findings = _read_jsonl(pack / "findings.jsonl")
     assert all(row["claim"] in {"open_port_observed", "misconfig_observed"} for row in findings)
     assert all("vulnerability" in row["not_claimed"] for row in findings)
+    assert all(row.get("schema") == "covey.pack_drop.v1" for row in findings)
+    assert all(row.get("adapter") for row in findings)
 
 
 def test_export_unproven_masscan_marks_meta_honest(tmp_path: Path):
@@ -390,6 +410,59 @@ def test_export_unproven_masscan_marks_meta_honest(tmp_path: Path):
     assert hosts == {"10.9.8.7", "10.9.8.8"}
     findings = _read_jsonl(pack / "findings.jsonl")
     assert all("vulnerability" in row["not_claimed"] for row in findings)
+
+
+def test_export_demo_false_only_when_plan_says_so(tmp_path: Path):
+    run = _seed_run(tmp_path)
+    plan = json.loads((run / "plan.json").read_text(encoding="utf-8"))
+    plan["demo"] = False
+    (run / "plan.json").write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+    summary = export_pack(run)
+    meta = json.loads((Path(summary["pack"]) / "meta.json").read_text(encoding="utf-8"))
+    assert meta["demo"] is False
+    assert meta["schema"] == "covey.pack_drop.v1"
+    assert meta["source"] == "evergreen-covey"
+    assets = _read_jsonl(Path(summary["pack"]) / "assets.jsonl")
+    assert {row["source"] for row in assets if row["kind"] == "host"} == {
+        "parse_live_hosts"
+    }
+    assert all(row["source"] == "pass2" for row in assets if row["kind"] == "service")
+
+
+def test_export_file_drop_row_keeps_provenance_source(tmp_path: Path) -> None:
+    run = _seed_run(tmp_path)
+    drop = run / "shards" / "drop-nessus"
+    drop.mkdir(parents=True)
+    (drop / "scan.xml").write_text(
+        """<?xml version="1.0"?>
+<NessusClientData_v2>
+  <Report name="lab">
+    <ReportHost name="10.9.8.7">
+      <ReportItem port="443" pluginID="1" pluginName="OpenSSL">
+        <cve>CVE-2024-7777</cve>
+      </ReportItem>
+    </ReportHost>
+  </Report>
+</NessusClientData_v2>
+""",
+        encoding="utf-8",
+    )
+    summary = export_pack(run)
+    pack = Path(summary["pack"])
+    assets = _read_jsonl(pack / "assets.jsonl")
+    extra = [
+        row
+        for row in assets
+        if row.get("kind") == "host" and row.get("address") == "10.9.8.7"
+    ]
+    assert extra
+    assert all(row["source"] == "file_drop" for row in extra)
+    assert all(row["schema"] == "covey.pack_drop.v1" for row in extra)
+    findings = _read_jsonl(pack / "findings.jsonl")
+    ingested = [row for row in findings if row.get("cve") == "CVE-2024-7777"]
+    assert ingested
+    assert all(row["schema"] == "covey.pack_drop.v1" for row in ingested)
+    assert all(row.get("adapter") for row in ingested)
 
 
 def test_export_no_findings_without_open_ports(tmp_path: Path):
