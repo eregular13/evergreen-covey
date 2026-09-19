@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from covey.adapters.registry import LIVE_ADAPTER_IDS
 from covey.errors import AdapterError, ShardError
 from covey.plan import adapter_for, build_plan
 from covey.scope import load
@@ -62,3 +63,22 @@ def test_openvas_live_plan_refused():
     scope = load(signed_scope_dict(adapter="openvas"))
     with pytest.raises(AdapterError, match="file_drop"):
         build_plan(scope)
+
+
+@pytest.mark.parametrize("name", LIVE_ADAPTER_IDS)
+def test_plan_every_live_adapter_without_spawn(name: str):
+    scope = load(
+        signed_scope_dict(
+            adapter=name,
+            targets=[{"cidr": "10.42.0.0/30"}],
+            pass2={"ports": "80"},
+        )
+    )
+    plan = build_plan(scope, out_root="out")
+    assert plan.adapter == name
+    assert plan.pass1_workers
+    assert plan.pass1_workers[0].argv
+    assert plan.pass1_workers[0].argv[0] == name
+    assert plan.pass2_workers
+    assert plan.pass2_workers[0].argv is None
+    assert plan.pass2_workers[0].argv_template

@@ -575,10 +575,25 @@ def sign_mapping(data: dict[str, Any], *, key: bytes | None = None) -> dict[str,
     return signed
 
 
-def sign_file(path: Path, *, in_place: bool = True) -> dict[str, Any]:
+def sign_file(
+    path: Path, *, in_place: bool = True, demo: bool | None = None
+) -> dict[str, Any]:
+    """HMAC-sign a SCOPE in place.
+
+    Client-day: if ``COVEY_SCOPE_HMAC_KEY`` is set and the document omits
+    ``demo``, stay ``demo: false``. The well-known demo key is used only when
+    the document is already ``demo: true`` or when no production key is set
+    and ``demo`` is omitted (lab convenience). ``demo=True`` forces the lab
+    path. ``demo=False`` requires the production HMAC env.
+    """
     data = _load_mapping(path)
-    if "demo" not in data:
+    if demo is True:
         data["demo"] = True
+    elif demo is False:
+        data["demo"] = False
+    elif "demo" not in data:
+        env_key = os.environ.get(HMAC_ENV, "").strip()
+        data["demo"] = not bool(env_key)
     signed = sign_mapping(data)
     if in_place:
         # Preserve a short header comment if present.

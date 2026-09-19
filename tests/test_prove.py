@@ -30,6 +30,7 @@ HONESTY_DOCS = (
     REPO_ROOT / "PROVE.md",
     REPO_ROOT / "README.md",
     REPO_ROOT / "ADAPTERS.md",
+    REPO_ROOT / "docs" / "CLIENT_DAY.md",
 )
 
 

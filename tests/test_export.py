@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from covey.adapters.nmap import parse_gnmap_services, parse_nmap_xml_services
-from covey.adapters.registry import E2E_PROVEN_ADAPTERS
+from covey.adapters.registry import E2E_PROVEN_ADAPTERS, UNPROVEN_ADAPTERS
 from covey.errors import ExportError
 from covey.export import export_pack
 from covey.cli import main
@@ -193,6 +193,8 @@ def test_export_writes_pack_layout(tmp_path: Path):
     meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
     assert meta["schema"] == "evergreen.pack_drop.v1"
     assert meta["adapter"] == "nmap"
+    assert meta["e2e_proven"] is True
+    assert meta["unproven"] is False
     assert meta["scope"]["signer"] == "prove-lab"
     assert meta["scope"]["purpose"] == "evergreen-covey loopback prove"
     assert "signature" not in meta["scope"]
@@ -328,6 +330,8 @@ def test_export_normalizes_all_e2e_proven_adapters(tmp_path: Path, adapter: str)
     pack = Path(summary["pack"])
     meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
     assert meta["adapter"] == adapter
+    assert meta["e2e_proven"] is True
+    assert meta["unproven"] is False
     assert meta["honesty"]["surface_map"] is True
     assert meta["honesty"]["control_operating_effectiveness"] is False
     assert "vulnerability" not in json.dumps(meta["honesty"])
@@ -336,6 +340,55 @@ def test_export_normalizes_all_e2e_proven_adapters(tmp_path: Path, adapter: str)
     assert hosts, f"{adapter} export must write at least one host"
     findings = _read_jsonl(pack / "findings.jsonl")
     assert all(row["claim"] in {"open_port_observed", "misconfig_observed"} for row in findings)
+    assert all("vulnerability" in row["not_claimed"] for row in findings)
+
+
+def test_export_unproven_masscan_marks_meta_honest(tmp_path: Path):
+    assert "masscan" in UNPROVEN_ADAPTERS
+    shards = tmp_path / "shards" / "p1-s00"
+    shards.mkdir(parents=True)
+    (shards / "scan.json").write_text(
+        (ADAPTER_FIXTURES / "masscan.json").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (shards / "argv.json").write_text(
+        json.dumps(["masscan", "-p80,443", "10.42.0.0/30"]) + "\n", encoding="utf-8"
+    )
+    (tmp_path / "plan.json").write_text(
+        json.dumps(
+            {
+                "adapter": "masscan",
+                "signer": "client",
+                "purpose": "authorized",
+                "shards": ["10.42.0.0/30"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "run_report.json").write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "exec": "masscan",
+                "pass1": [{"artifact_dir": str(shards), "live_hosts": []}],
+                "pass2": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    summary = export_pack(tmp_path)
+    pack = Path(summary["pack"])
+    meta = json.loads((pack / "meta.json").read_text(encoding="utf-8"))
+    assert meta["adapter"] == "masscan"
+    assert meta["e2e_proven"] is False
+    assert meta["unproven"] is True
+    assert meta["honesty"]["control_operating_effectiveness"] is False
+    assets = _read_jsonl(pack / "assets.jsonl")
+    hosts = {row["address"] for row in assets if row["kind"] == "host"}
+    assert hosts == {"10.9.8.7", "10.9.8.8"}
+    findings = _read_jsonl(pack / "findings.jsonl")
     assert all("vulnerability" in row["not_claimed"] for row in findings)
 
 

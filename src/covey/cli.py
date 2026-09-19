@@ -1,4 +1,4 @@
-"""CLI: python -m covey plan|run|prove|export|sign."""
+"""CLI: python -m covey plan|run|prove|export|sign|ready|assess."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from covey.errors import CoveyError, ExportError, GateError
 from covey.export import export_pack
 from covey.plan import build_plan
 from covey.prove import run_prove
+from covey.ready import check_ready, format_ready, write_ready
 from covey.runner import resolve_exec, run_plan
 from covey.scope import load, sign_file
 
@@ -76,8 +77,28 @@ def _cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_ready(args: argparse.Namespace) -> int:
+    """Signed SCOPE preflight. BYO resolve only — never install, never spawn."""
+    summary = check_ready(
+        Path(args.scope),
+        require_binary=not args.plan_only,
+        strict_e2e=args.strict_e2e,
+    )
+    if args.out:
+        write_ready(summary, Path(args.out))
+        print(f"wrote {args.out}")
+    print(format_ready(summary), end="")
+    if not summary["ok"]:
+        return 1
+    return 0
+
+
 def _cmd_assess(args: argparse.Namespace) -> int:
-    """Unattended within a signed SCOPE: run then export. Live still dual-gated."""
+    """Unattended within a signed SCOPE: ready, run, then export. Live still dual-gated."""
+    summary = check_ready(Path(args.scope), require_binary=True)
+    print(format_ready(summary), end="")
+    if not summary["ok"]:
+        return 1
     rc = _cmd_run(args)
     if rc != 0:
         return rc
@@ -86,7 +107,7 @@ def _cmd_assess(args: argparse.Namespace) -> int:
 
 def _cmd_sign(args: argparse.Namespace) -> int:
     path = Path(args.scope)
-    signed = sign_file(path, in_place=True)
+    signed = sign_file(path, in_place=True, demo=True if args.demo else None)
     print(f"signed {path} ({signed['signature'][:16]}…)")
     return 0
 
@@ -147,13 +168,43 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export.set_defaults(func=_cmd_export)
 
-    sign = sub.add_parser("sign", help="HMAC-sign a demo SCOPE in place")
+    sign = sub.add_parser(
+        "sign",
+        help="HMAC-sign a SCOPE in place (production key if COVEY_SCOPE_HMAC_KEY is set)",
+    )
     sign.add_argument("--scope", required=True)
+    sign.add_argument(
+        "--demo",
+        action="store_true",
+        help="force demo: true (well-known key unless COVEY_SCOPE_HMAC_KEY is set)",
+    )
     sign.set_defaults(func=_cmd_sign)
+
+    ready = sub.add_parser(
+        "ready",
+        help="client-day preflight: signed SCOPE + BYO binaries (no install, no spawn)",
+    )
+    ready.add_argument("--scope", required=True, help="signed SCOPE YAML")
+    ready.add_argument(
+        "--out",
+        default=None,
+        help="optional ready.json path",
+    )
+    ready.add_argument(
+        "--plan-only",
+        action="store_true",
+        help="do not fail when a BYO binary is missing (still report it)",
+    )
+    ready.add_argument(
+        "--strict-e2e",
+        action="store_true",
+        help="fail closed if SCOPE uses an argv+unit-only adapter (masscan/arp-scan/netdiscover/zmap)",
+    )
+    ready.set_defaults(func=_cmd_ready)
 
     assess = sub.add_parser(
         "assess",
-        help="signed SCOPE run then GRC export (unattended within SCOPE; live still dual-gated)",
+        help="client-day: ready + run + GRC export (unattended within SCOPE; live still dual-gated)",
     )
     assess.add_argument("--scope", required=True, help="signed SCOPE YAML")
     assess.add_argument("--out", default="out")

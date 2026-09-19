@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from covey.adapters import (
+    ADAPTER_HOST_NEEDS,
     E2E_PROVEN_ADAPTERS,
     FILE_DROP_IDS,
     FORBIDDEN_LIVE,
@@ -10,7 +11,9 @@ from covey.adapters import (
     UNPROVEN_ADAPTERS,
     OpenVASFileDrop,
     adapter_for,
+    desktop_or_host_adapters,
     file_drop_adapter,
+    host_need,
     list_live_adapters,
 )
 from covey.errors import AdapterError
@@ -52,6 +55,12 @@ def test_registry_lists_exactly_20_live_ids():
         name for name in ids if name not in E2E_PROVEN_ADAPTERS
     )
     assert len(UNPROVEN_ADAPTERS) == 4
+    assert set(ADAPTER_HOST_NEEDS) == set(ids)
+    assert set(desktop_or_host_adapters()) >= set(UNPROVEN_ADAPTERS)
+    for name in ids:
+        need = host_need(name)
+        assert isinstance(need["desktop_or_host"], bool)
+        assert need["needs"]
 
 
 @pytest.mark.parametrize("name", LIVE_ADAPTER_IDS)
