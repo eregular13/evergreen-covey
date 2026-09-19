@@ -1,0 +1,25 @@
+# Unit-only CI. Never apt-installs scanners. Never runs `make prove`
+# or pytest -m integration (those spawn BYO nmap/rustscan/…).
+name: unit
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    env:
+      # Match [tool.pytest.ini_options] pythonpath = [".", "src"]
+      PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/src
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Unit tests
+        run: python -m pytest -q -m "not integration"
