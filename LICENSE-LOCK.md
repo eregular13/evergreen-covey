@@ -19,7 +19,8 @@ into the tree, or commit:
 
 Operators bring their own scanner. Covey resolves the selected adapter
 binary from `PATH`, `COVEY_<TOOL>`, `COVEY_BIN`, or a user-supplied
-`docker://` image. `covey ready` / `covey assess` never apt-install.
+`docker://` image. `covey ready` / `covey assess` / `covey client-day-dry`
+(`scripts/client_day_dry.sh`, `scripts/client_day_dry.ps1`) never apt-install.
 The prove path may install Nmap (which ships nping),
 fping, sslscan, whatweb, hping3, onesixtyone, nbtscan, braa, ike-scan, or
 sipvicious (svmap) **on the local prove VM only**, or download a rustscan/naabu/httpx/tlsx GitHub

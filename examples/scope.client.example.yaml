@@ -1,4 +1,6 @@
 # UNSIGNED client-day template. Not a signed SCOPE. Not the loopback prove.
+# SAMPLE dry (no live scan, lab HMAC): ./scripts/client_day_dry.sh
+#   (DESKTOP: .\scripts\client_day_dry.ps1)
 # Copy, replace every REPLACE- field and the CIDR with authorized ranges,
 # export COVEY_SCOPE_HMAC_KEY, then:
 #   python -m covey sign --scope scope.client.yaml

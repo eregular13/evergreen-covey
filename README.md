@@ -1,5 +1,7 @@
 # Evergreen Covey
 
+**Client-day dry (SAMPLE, DESKTOP/host, no live scan):** `./scripts/client_day_dry.sh` or `.\scripts\client_day_dry.ps1` (`make client-day-dry` / `python -m covey client-day-dry`). sign (lab HMAC) → `ready --strict-e2e` → `plan` (no spawn). `pack_drop` from committed fixtures if a full assess would need BYO — missing binaries fail closed, never apt-install. SAMPLE ≠ client. Do not claim masscan / arp-scan / netdiscover / zmap live. See [docs/CLIENT_DAY.md](docs/CLIENT_DAY.md).
+
 SCOPE-gated Lego for **sharded BYO scanner workers**. Covey plans tiles,
 fans out a small worker pool, lands artifacts, and optionally deepens only
 the hosts that answered. It does not ship a scanner.
@@ -51,6 +53,13 @@ spawn them.
 Loopback `prove` is the farm lab. A client engagement is a **signed** SCOPE
 (`demo: false` + `COVEY_SCOPE_HMAC_KEY`) and **BYO** binaries on the
 engagement host. Operator path: [docs/CLIENT_DAY.md](docs/CLIENT_DAY.md).
+
+One-command SAMPLE dry (no live client scan, same shape as pack `sample_to_sor`):
+
+```bash
+./scripts/client_day_dry.sh
+# DESKTOP: .\scripts\client_day_dry.ps1
+```
 
 ```bash
 export COVEY_SCOPE_HMAC_KEY=...          # off git; not the demo key
@@ -249,18 +258,22 @@ python -m covey export --out out --target opengrc
 python -m covey export --out out --target probo
 # --target riskready → WRAP_DEAD exit 2, no HTTP
 python -m covey ready --scope examples/scope.lab.yaml --plan-only
+python -m covey client-day-dry
 python -m covey assess --scope scope.client.yaml --out out --target all
 # or
 make export
 make ready SCOPE=scope.client.yaml
+make client-day-dry
 ```
 
 `plan` writes worker JSON (shard id, target, stage, argv / argv template)
 and does **not** invoke a scanner.
 
 `ready` loads a signed SCOPE, resolves BYO binaries, and prints
-DESKTOP/host needs. It does **not** install or spawn. `assess` is
-ready + run + export for an unattended client-day window.
+DESKTOP/host needs. It does **not** install or spawn. `client-day-dry`
+is the SAMPLE DESKTOP/host rehearsal: lab-HMAC sign + `ready --strict-e2e`
++ `plan` (no spawn), then fixture `pack_drop` if BYO is missing.
+`assess` is ready + run + export for an unattended client-day window.
 
 `export` reads a prove/run `out/` and writes `out/pack_drop/` for the
 assessment MCP / `grc-collector-pack` **file_drop** (assets, open-port
@@ -291,6 +304,7 @@ python -m covey export --out out --target all
 | `covey.runner` | local subprocess or `docker run`; land stdout/stderr/xml |
 | `covey.export` | Seen → SoR-ready `pack_drop/` + optional CISO/OpenGRC/Probo files |
 | `covey.ready` | Client-day preflight: signed SCOPE + BYO resolve; no install, no spawn |
+| `covey.client_day_dry` | SAMPLE dry: sign → ready --strict-e2e → plan; fixture export if BYO miss |
 | `covey.findings` | Header/TLS/service misconfigs; unknown stays UNMAPPED |
 | `covey.adapters` | 20 live BYO argv+parse adapters + OpenVAS file_drop stub |
 
