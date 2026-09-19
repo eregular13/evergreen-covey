@@ -303,3 +303,5 @@ See [`ADAPTERS.md`](ADAPTERS.md) and
 .venv/bin/pytest -q -m "not integration"   # shard math, SCOPE refuse, argv
 .venv/bin/pytest -q -m integration         # real nmap through the runner
 ```
+
+GitHub Actions (`.github/workflows/lab.yml`) gates **unit tests only**. BYO prove / `pytest -m integration` stays on the operator host — CI never installs or spawns scanners.
